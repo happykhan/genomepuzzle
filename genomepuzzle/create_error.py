@@ -1,12 +1,14 @@
-
 import random
-import csv 
+import csv
 import logging
 import os
 import shutil
-import gzip 
+import gzip
 
-def degrade_quality(input_fastq, output_fastq, min_quality=5, max_quality=30, random_seed=42):
+
+def degrade_quality(
+    input_fastq, output_fastq, min_quality=5, max_quality=30, random_seed=42
+):
     """
     Degrade base quality scores randomly, with poorer quality towards the end of each read.
 
@@ -17,10 +19,13 @@ def degrade_quality(input_fastq, output_fastq, min_quality=5, max_quality=30, ra
     - max_quality: int, maximum Phred score for base quality at the start of the read.
     """
     random.seed(random_seed)
-    if not (0 <= min_quality <= max_quality <= 93):  # Ensure valid Phred+33 range
+    if not 0 <= min_quality <= max_quality <= 93:  # Ensure valid Phred+33 range
         raise ValueError("Quality scores must be in range 0-93.")
 
-    with gzip.open(input_fastq, "rt") as infile, gzip.open(output_fastq, "wt") as outfile:
+    with (
+        gzip.open(input_fastq, "rt") as infile,
+        gzip.open(output_fastq, "wt") as outfile,
+    ):
         while True:
             # Read one FASTQ record (4 lines)
             header = infile.readline().strip()  # Line 1: Sequence ID
@@ -38,9 +43,13 @@ def degrade_quality(input_fastq, output_fastq, min_quality=5, max_quality=30, ra
             # Generate progressively poorer quality scores
             for i in range(read_length):
                 # Calculate a score range that worsens towards the end of the read
-                current_max_quality = max_quality - int((i / read_length) * (max_quality - min_quality))
+                current_max_quality = max_quality - int(
+                    (i / read_length) * (max_quality - min_quality)
+                )
                 random_quality = random.randint(min_quality, current_max_quality)
-                degraded_quality.append(chr(random_quality + 33))  # Convert Phred score to ASCII
+                degraded_quality.append(
+                    chr(random_quality + 33)
+                )  # Convert Phred score to ASCII
 
             # Join the degraded quality scores
             new_quality = "".join(degraded_quality)
@@ -61,7 +70,7 @@ def truncate_fastq(input_fastq, output_fastq, truncate_length=75):
     - truncate_length: int, length to truncate each read to.
     """
 
-    with open(input_fastq, "r") as infile, open(output_fastq, "w") as outfile:
+    with open(input_fastq, "r", encoding="utf-8") as infile, open(output_fastq, "w", encoding="utf-8") as outfile:
         while True:
             # Read one complete FASTQ record (4 lines)
             header = infile.readline().strip()  # Line 1: Sequence ID
@@ -78,11 +87,16 @@ def truncate_fastq(input_fastq, output_fastq, truncate_length=75):
             truncated_quality = quality[:truncate_length]
 
             # Write the truncated record to the output file
-            outfile.write(f"{header}\n{truncated_sequence}\n{plus}\n{truncated_quality}\n")
+            outfile.write(
+                f"{header}\n{truncated_sequence}\n{plus}\n{truncated_quality}\n"
+            )
 
     print(f"Truncation complete. Output saved to: {output_fastq}")
 
-def subsample_paired_fastq(input_r1, input_r2, output_r1, output_r2, subsample_fraction=0.1, random_seed=42):
+
+def subsample_paired_fastq(
+    input_r1, input_r2, output_r1, output_r2, subsample_fraction=0.1, random_seed=42
+):
     """
     Subsample paired-end FASTQ files to reduce coverage.
 
@@ -95,9 +109,12 @@ def subsample_paired_fastq(input_r1, input_r2, output_r1, output_r2, subsample_f
     random.seed(random_seed)
     assert 0 < subsample_fraction <= 1, "Subsample fraction must be between 0 and 1."
 
-    with open(input_r1, "r") as r1, open(input_r2, "r") as r2, \
-         open(output_r1, "w") as out_r1, open(output_r2, "w") as out_r2:
-
+    with (
+        open(input_r1, "r", encoding="utf-8") as r1,
+        open(input_r2, "r", encoding="utf-8") as r2,
+        open(output_r1, "w", encoding="utf-8") as out_r1,
+        open(output_r2, "w", encoding="utf-8") as out_r2,
+    ):
         while True:
             # Read 4 lines for R1 (one full FASTQ record)
             r1_record = [r1.readline().strip() for _ in range(4)]
@@ -116,6 +133,7 @@ def subsample_paired_fastq(input_r1, input_r2, output_r1, output_r2, subsample_f
     print(f"  {output_r1}")
     print(f"  {output_r2}")
 
+
 def pass_through(r1_path, r2_path, r1_output, r2_output):
     """
     Pass through read files to output directory.
@@ -132,102 +150,169 @@ def pass_through(r1_path, r2_path, r1_output, r2_output):
     shutil.copy(r1_path, r1_output)
     shutil.copy(r2_path, r2_output)
 
+
 def get_contaminated_read_example(species_list, contamination_list_file):
-    # get list of contaminants
+    """
+    Reads a contamination list file and returns a list of contaminants that are not in the given species list.
+
+    Args:
+        species_list (list): A list of species names to exclude from the contamination list.
+        contamination_list_file (str): The file path to the contamination list CSV file.
+
+    Returns:
+        list: A list of dictionaries representing the contaminants that are not in the species list and have an assembly.
+    """
     contaminant_list = []
-    for x in csv.DictReader(open(contamination_list_file, 'r')):
-        if x['SPECIES'] not in species_list and x.get('ASSEMBLY'):
+    for x in csv.DictReader(open(contamination_list_file, "r", encoding="utf-8")):
+        if x["SPECIES"] not in species_list and x.get("ASSEMBLY"):
             contaminant_list.append(x)
 
+
 def corrupt_read(sample, output_dir, random_seed=42):
+    """
+    Corrupts a read file by writing a null byte at a random position.
+
+    Args:
+        sample (dict): A dictionary containing sample information, 
+                       where "r1" is the key for the read file path.
+        output_dir (str): The directory where the corrupted file will be saved.
+        random_seed (int, optional): The seed for the random number generator. 
+                                     Defaults to 42.
+
+    Returns:
+        dict: The original sample dictionary.
+    """
     random.seed(random_seed)
-    file_to_corrupt = os.path.join(output_dir, os.path.basename(sample['r1']))
-    with open(file_to_corrupt, 'r+b') as f:
+    file_to_corrupt = os.path.join(output_dir, os.path.basename(sample["r1"]))
+    with open(file_to_corrupt, "r+b") as f:
         f.seek(random.randint(0, os.path.getsize(file_to_corrupt) - 1))
-        f.write(b'\x00')
+        f.write(b"\x00")
     return sample
 
 
-def introduce_errors(sample_sheet, error_proportion, contamination_list_file, output_dir, random_seed=42):
-    # Reads are created and in sample_sheet.csv
-    # Now we need to introduce errors in the reads
-    # error_proportion is the proportion of samples that will have errors
-    # get sample details from file with dict reader
-    # create output dir if doesnt exist
+def introduce_errors(
+
+    sample_sheet, error_proportion, contamination_list_file, output_dir, random_seed=42
+):
+    """
+    Introduce errors into sequencing reads based on specified error proportions.
+
+    Parameters:
+    sample_sheet (str): Path to the CSV file containing sample information.
+    error_proportion (float): Proportion of samples to introduce errors into.
+    contamination_list_file (str): Path to the file containing contamination details.
+    output_dir (str): Directory to save the output files with introduced errors.
+    random_seed (int, optional): Seed for random number generator to ensure reproducibility. Default is 42.
+
+    Returns:
+    None
+
+    This function reads the sample information from the provided sample_sheet, introduces various types of errors
+    (e.g., truncated reads, corrupted reads, contamination, poor quality, low coverage) into a proportion of the samples,
+    and writes the modified samples to the output directory. The types of errors and their proportions are determined
+    randomly based on the provided error_proportion. The function also updates the sample sheet with details of the
+    introduced errors and saves it to the output directory.
+    """
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     random.seed(random_seed)
-    types_of_errors = ['TRUNCATED', 'CORRUPT', 'CONTAMINATED', 'POOR_QUALITY', 'LOW_COVERAGE']
+    types_of_errors = [
+        "TRUNCATED",
+        "CORRUPT",
+        "CONTAMINATED",
+        "POOR_QUALITY",
+        "LOW_COVERAGE",
+    ]
 
-    full_sample_list = [ ]   
-    with open(sample_sheet, 'r') as f:
+    full_sample_list = []
+    with open(sample_sheet, "r", encoding="utf-8") as f:
         full_sample_list = list(csv.DictReader(f))
     # pick with samples to alter given the error_proportion
     # get list of species in sample_sheet
-    species_list = set([sample['SPECIES'] for sample in full_sample_list])
+    # species_list = set([sample['SPECIES'] for sample in full_sample_list])
 
-    error_samples = random.sample(full_sample_list, int(len(full_sample_list) * error_proportion))
+    error_samples = random.sample(
+        full_sample_list, int(len(full_sample_list) * error_proportion)
+    )
     for sample in error_samples:
         if random.random() < 0.5:
-            sample['ERROR'] = 'CONTAMINATED'
+            sample["ERROR"] = "CONTAMINATED"
         elif random.random() < 0.3:
-            sample['ERROR'] = 'LOW_COVERAGE'
+            sample["ERROR"] = "LOW_COVERAGE"
         else:
-            sample['ERROR'] = random.choice(types_of_errors)
-        sample['QC'] = 'FAILED'
-        sample['Notes'] = 'Error introduced'
-    
+            sample["ERROR"] = random.choice(types_of_errors)
+        sample["QC"] = "FAILED"
+        sample["Notes"] = "Error introduced"
+
     for sample in full_sample_list:
         input_dir = os.path.dirname(sample_sheet)
-        input_r1 = os.path.join(input_dir, os.path.basename(sample['r1']))
-        input_r2 = os.path.join(input_dir, os.path.basename(sample['r2']))
-        output_r1 = os.path.join(output_dir, os.path.basename(sample['r1']))
-        output_r2 = os.path.join(output_dir, os.path.basename(sample['r2']))
-        error_type = sample['ERROR']
-        if error_type == 'NONE':
+        input_r1 = os.path.join(input_dir, os.path.basename(sample["r1"]))
+        input_r2 = os.path.join(input_dir, os.path.basename(sample["r2"]))
+        output_r1 = os.path.join(output_dir, os.path.basename(sample["r1"]))
+        output_r2 = os.path.join(output_dir, os.path.basename(sample["r2"]))
+        error_type = sample["ERROR"]
+        if error_type == "NONE":
             pass_through(input_r1, input_r2, output_r1, output_r2)
-            sample['Notes'] += " No changes."
-        elif error_type == 'TRUNCATED':
+            sample["Notes"] += " No changes."
+        elif error_type == "TRUNCATED":
             truncate_length = random.randint(5, 100)
             file_to_truncate = input_r1
             if random.choice([True, False]):
                 file_to_truncate = input_r1
-                sample['Notes'] = 'Truncated read 1 to {} bp'.format(truncate_length)
+                sample["Notes"] = "Truncated read 1 to {} bp".format(truncate_length)
             else:
-                sample['Notes'] = 'Truncated read 2 to {} bp'.format(truncate_length)  
-                file_to_truncate = input_r2         
-            sample = truncate_fastq(file_to_truncate, output_dir, truncate_length)
-        elif error_type == 'CORRUPT':
+                sample["Notes"] = "Truncated read 2 to {} bp".format(truncate_length)
+                file_to_truncate = input_r2
+            truncate_fastq(file_to_truncate, output_dir, truncate_length)
+        elif error_type == "CORRUPT":
             corruption = random.choice(["r1", "r2", "both"])
             if corruption == "both":
-                corrupt_read(sample['r1'])
-                corrupt_read(sample['r2'])
-                sample['Notes'] = 'Corrupted both reads'
+                corrupt_read(sample["r1"], output_dir)
+                corrupt_read(sample["r2"], output_dir)
+                sample["Notes"] = "Corrupted both reads"
             elif corruption == "r1":
-                corrupt_read(sample['r1'])
-                sample['Notes'] = 'Corrupted read 1'
+                corrupt_read(sample["r1"], output_dir)
+                sample["Notes"] = "Corrupted read 1"
             elif corruption == "r2":
-                corrupt_read(sample['r2'])   
-                sample['Notes'] = 'Corrupted read 2'            
-        elif error_type == 'CONTAMINATED':
-            sample = pass_through(sample, sample_sheet, output_dir, random_seed)
-        elif error_type == 'POOR_QUALITY':
+                corrupt_read(sample["r2"], output_dir)
+                sample["Notes"] = "Corrupted read 2"
+        elif error_type == "CONTAMINATED":
+            pass_through(sample, sample_sheet, output_dir, random_seed)
+        elif error_type == "POOR_QUALITY":
             min_quality = random.randint(5, 9)
             max_quality = random.randint(10, 20)
-            degrade_quality(input_r1, output_r1, min_quality=min_quality, max_quality=max_quality, random_seed=random_seed)
-            degrade_quality(input_r2, output_r2, min_quality=min_quality, max_quality=max_quality, random_seed=random_seed)
-            sample['Notes'] += f" Quality degraded to {min_quality}-{max_quality}"
-        elif error_type == 'LOW_COVERAGE':
+            degrade_quality(
+                input_r1,
+                output_r1,
+                min_quality=min_quality,
+                max_quality=max_quality,
+                random_seed=random_seed,
+            )
+            degrade_quality(
+                input_r2,
+                output_r2,
+                min_quality=min_quality,
+                max_quality=max_quality,
+                random_seed=random_seed,
+            )
+            sample["Notes"] += f" Quality degraded to {min_quality}-{max_quality}"
+        elif error_type == "LOW_COVERAGE":
             subsample_fraction = random.uniform(0.1, 0.4)
-            subsample_paired_fastq(input_r1, input_r2, output_r1, output_r2, subsample_fraction, random_seed=random_seed)
+            subsample_paired_fastq(
+                input_r1,
+                input_r2,
+                output_r1,
+                output_r2,
+                subsample_fraction,
+                random_seed=random_seed,
+            )
         else:
-            logging.error(f"Error type {error_type} not implemented")
+            logging.error("Error type %s not implemented", error_type)
             raise ValueError(f"Error type {error_type} not implemented")
         # write sample sheet
-    sample_sheet = os.path.join(output_dir, 'sample_sheet.csv')
-    with open(sample_sheet, 'w') as f:
+    sample_sheet = os.path.join(output_dir, "sample_sheet.csv")
+    with open(sample_sheet, "w", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=full_sample_list[0].keys())
         writer.writeheader()
         for sample in full_sample_list:
             writer.writerow(sample)
-
