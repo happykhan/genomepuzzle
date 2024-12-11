@@ -2,6 +2,11 @@
 __pycache__/
 *.py[cod]
 *$py.class
+output/
+output_dataset/
+error_models/
+kleb.csv
+fasterq* 
 
 # C extensions
 *.so
