@@ -1,6 +1,12 @@
+"""
+This module provides command-line interface for genome sample generation and error introduction.
+"""
+
 import argparse
 import logging
 import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from genomepuzzle.create_error import introduce_errors
 from genomepuzzle.simulate_reads import simulate_reads
 
@@ -41,7 +47,7 @@ def parse_arguments():
     # Subparser for simulate reads
     simulate_parser = subparsers.add_parser("simulate", help="Simulate reads")
     simulate_parser.add_argument(
-        "--num_samples", type=int, help="Number of samples to generate", default=3
+        "--num_samples", type=int, help="Number of samples to generate", default=10
     )
     simulate_parser.add_argument(
         "--samplelist",

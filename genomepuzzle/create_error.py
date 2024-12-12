@@ -4,7 +4,7 @@ import logging
 import os
 import shutil
 import gzip
-
+from genomepuzzle.simulate_reads import run_art, fetch_assembly, cleanup_output_dir
 
 def degrade_quality(
     input_fastq, output_fastq, min_quality=5, max_quality=30, random_seed=42
@@ -31,7 +31,7 @@ def degrade_quality(
             header = infile.readline().strip()  # Line 1: Sequence ID
             sequence = infile.readline().strip()  # Line 2: Nucleotide sequence
             plus = infile.readline().strip()  # Line 3: +
-            quality = infile.readline().strip()  # Line 4: Quality scores
+            # quality = infile.readline().strip()  # Line 4: Quality scores
 
             # Break if end of file
             if not header:
@@ -57,7 +57,7 @@ def degrade_quality(
             # Write the modified FASTQ record
             outfile.write(f"{header}\n{sequence}\n{plus}\n{new_quality}\n")
 
-    print(f"Quality degradation complete. Output saved to: {output_fastq}")
+    logging.info("Quality degradation complete. Output saved to: %s", output_fastq)
 
 
 def truncate_fastq(input_fastq, output_fastq, truncate_length=75):
@@ -70,7 +70,10 @@ def truncate_fastq(input_fastq, output_fastq, truncate_length=75):
     - truncate_length: int, length to truncate each read to.
     """
 
-    with open(input_fastq, "r", encoding="utf-8") as infile, open(output_fastq, "w", encoding="utf-8") as outfile:
+    with (
+        open(input_fastq, "r", encoding="utf-8") as infile,
+        open(output_fastq, "w", encoding="utf-8") as outfile,
+    ):
         while True:
             # Read one complete FASTQ record (4 lines)
             header = infile.readline().strip()  # Line 1: Sequence ID
@@ -91,7 +94,7 @@ def truncate_fastq(input_fastq, output_fastq, truncate_length=75):
                 f"{header}\n{truncated_sequence}\n{plus}\n{truncated_quality}\n"
             )
 
-    print(f"Truncation complete. Output saved to: {output_fastq}")
+    logging.info("Truncation complete. Output saved to: %s", output_fastq)
 
 
 def subsample_paired_fastq(
@@ -110,10 +113,10 @@ def subsample_paired_fastq(
     assert 0 < subsample_fraction <= 1, "Subsample fraction must be between 0 and 1."
 
     with (
-        open(input_r1, "r", encoding="utf-8") as r1,
-        open(input_r2, "r", encoding="utf-8") as r2,
-        open(output_r1, "w", encoding="utf-8") as out_r1,
-        open(output_r2, "w", encoding="utf-8") as out_r2,
+        gzip.open(input_r1, "rt") as r1,
+        gzip.open(input_r2, "rt") as r2,
+        gzip.open(output_r1, "wt") as out_r1,
+        gzip.open(output_r2, "wt") as out_r2,
     ):
         while True:
             # Read 4 lines for R1 (one full FASTQ record)
@@ -129,9 +132,9 @@ def subsample_paired_fastq(
                 out_r1.write("\n".join(r1_record) + "\n")
                 out_r2.write("\n".join(r2_record) + "\n")
 
-    print("Subsampling complete. Output files saved as:")
-    print(f"  {output_r1}")
-    print(f"  {output_r2}")
+    logging.info("Subsampling complete. Output files saved as:")
+    logging.info("  %s", output_r1)
+    logging.info("  %s", output_r2)
 
 
 def pass_through(r1_path, r2_path, r1_output, r2_output):
@@ -153,19 +156,22 @@ def pass_through(r1_path, r2_path, r1_output, r2_output):
 
 def get_contaminated_read_example(species_list, contamination_list_file):
     """
-    Reads a contamination list file and returns a list of contaminants that are not in the given species list.
+    Reads a contamination list file and returns a list of contaminants that
+    are not in the given species list.
 
     Args:
         species_list (list): A list of species names to exclude from the contamination list.
         contamination_list_file (str): The file path to the contamination list CSV file.
 
     Returns:
-        list: A list of dictionaries representing the contaminants that are not in the species list and have an assembly.
+        list: A list of dictionaries representing the contaminants that are
+        not in the species list and have an assembly.
     """
     contaminant_list = []
     for x in csv.DictReader(open(contamination_list_file, "r", encoding="utf-8")):
         if x["SPECIES"] not in species_list and x.get("ASSEMBLY"):
             contaminant_list.append(x)
+    return contaminant_list
 
 
 def corrupt_read(sample, output_dir, random_seed=42):
@@ -173,10 +179,10 @@ def corrupt_read(sample, output_dir, random_seed=42):
     Corrupts a read file by writing a null byte at a random position.
 
     Args:
-        sample (dict): A dictionary containing sample information, 
+        sample (dict): A dictionary containing sample information,
                        where "r1" is the key for the read file path.
         output_dir (str): The directory where the corrupted file will be saved.
-        random_seed (int, optional): The seed for the random number generator. 
+        random_seed (int, optional): The seed for the random number generator.
                                      Defaults to 42.
 
     Returns:
@@ -190,8 +196,89 @@ def corrupt_read(sample, output_dir, random_seed=42):
     return sample
 
 
-def introduce_errors(
+def contamination(
+    input_r1,
+    input_r2,
+    output_r1,
+    output_r2,
+    contaminant_assembly,
+    output_dir,
+    percentage=50,
+    random_seed=42,
+):
+    """
+    Create contaminated reads by simulating from a contaminant assembly and mixing
+      them with input reads.
 
+    Parameters:
+    input_r1 (str): Path to the input R1 fastq file.
+    input_r2 (str): Path to the input R2 fastq file.
+    output_r1 (str): Path to the output R1 fastq file.
+    output_r2 (str): Path to the output R2 fastq file.
+    contaminant_assembly (str): Path to the contaminant assembly file.
+    output_dir (str): Directory to store the temporary contaminant files.
+    percentage (int, optional): Percentage of contaminant reads to mix with input reads.
+        Default is 50.
+    random_seed (int, optional): Seed for random number generator. Default is 42.
+
+    Returns:
+    None
+    """
+    fetch_assembly([contaminant_assembly], output_dir)
+    ass_dir = os.path.join(output_dir, 'ncbi_dataset', 'data' )
+    ass_dir = [os.path.join(ass_dir, x) for x in os.listdir(ass_dir) if x.startswith(contaminant_assembly)][0]
+
+    contaminant_assembly_path = [os.path.join(ass_dir, x) for x in os.listdir(ass_dir) if x.startswith(contaminant_assembly)][0]
+    # output_dir/ncbi_dataset/data/dataset_catalog.json 
+
+    sample = {
+        "public_name": "contaminant",
+        "platform": "HS25",
+        "read_length": 150,
+        "coverage": percentage,
+        "fragment_length": 300,
+        "standard_deviation": 30,
+        "random_seed": random_seed,
+        "SPECIES": "contaminant",
+        "ASSEMBLY": contaminant_assembly_path,
+        "SAMPLE_NAME": "contaminant",
+    }
+    contaminant_output_r1 = os.path.join(output_dir, "contaminant_r1.fastq.gz")
+    contaminant_output_r2 = os.path.join(output_dir, "contaminant_r2.fastq.gz")
+    run_art(
+        sample,
+        output_dir,
+        contaminant_assembly_path,
+        contaminant_output_r1,
+        contaminant_output_r2,
+    )
+    # mix the reads with the contaminant simulated reads
+    subsample_paired_fastq(
+        input_r1,
+        input_r2,
+        output_r1,
+        output_r2,
+        (100 - percentage) / 100,
+        random_seed=random_seed,
+    )
+    # append the contaminant reads to the output files (gzip)
+    with (
+        gzip.open(output_r1, "ab") as r1_out,
+        gzip.open(contaminant_output_r1, "rb") as r1_in,
+    ):
+        shutil.copyfileobj(r1_in, r1_out)
+    with (
+        gzip.open(output_r2, "ab") as r2_out,
+        gzip.open(contaminant_output_r2, "rb") as r2_in,
+    ):
+        shutil.copyfileobj(r2_in, r2_out)
+    # remove the temporary contaminant files
+    os.remove(contaminant_output_r1)
+    os.remove(contaminant_output_r2)
+    cleanup_output_dir(output_dir)
+
+
+def introduce_errors(
     sample_sheet, error_proportion, contamination_list_file, output_dir, random_seed=42
 ):
     """
@@ -229,8 +316,12 @@ def introduce_errors(
         full_sample_list = list(csv.DictReader(f))
     # pick with samples to alter given the error_proportion
     # get list of species in sample_sheet
-    # species_list = set([sample['SPECIES'] for sample in full_sample_list])
-
+    species_list = set([sample["SPECIES"] for sample in full_sample_list])
+    contaminant_list = get_contaminated_read_example(
+        species_list, contamination_list_file
+    )
+    if len(contaminant_list) == 0:
+        raise ValueError("No contaminants found in the contamination list.")
     error_samples = random.sample(
         full_sample_list, int(len(full_sample_list) * error_proportion)
     )
@@ -259,9 +350,9 @@ def introduce_errors(
             file_to_truncate = input_r1
             if random.choice([True, False]):
                 file_to_truncate = input_r1
-                sample["Notes"] = "Truncated read 1 to {} bp".format(truncate_length)
+                sample["Notes"] = f"Truncated read 1 to {truncate_length} bp"
             else:
-                sample["Notes"] = "Truncated read 2 to {} bp".format(truncate_length)
+                sample["Notes"] = f"Truncated read 2 to {truncate_length} bp"
                 file_to_truncate = input_r2
             truncate_fastq(file_to_truncate, output_dir, truncate_length)
         elif error_type == "CORRUPT":
@@ -277,7 +368,22 @@ def introduce_errors(
                 corrupt_read(sample["r2"], output_dir)
                 sample["Notes"] = "Corrupted read 2"
         elif error_type == "CONTAMINATED":
-            pass_through(sample, sample_sheet, output_dir, random_seed)
+            contaminant = random.choice(contaminant_list)
+            contaminant_assembly_file = contaminant["ASSEMBLY"]
+            percentage = random.randint(20, 80)
+            contamination(
+                input_r1,
+                input_r2,
+                output_r1,
+                output_r2,
+                contaminant_assembly_file,
+                output_dir,
+                percentage,
+                random_seed,
+            )
+            sample["Notes"] += (
+                f" Contaminated with {contaminant.get('SAMPLE_NAME')} at {percentage}%"
+            )
         elif error_type == "POOR_QUALITY":
             min_quality = random.randint(5, 9)
             max_quality = random.randint(10, 20)
