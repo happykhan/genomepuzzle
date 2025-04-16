@@ -1,6 +1,5 @@
-import pytest
 import os
-from genomepuzzle.create_error import truncate_fastq, contamination
+from genomepuzzle.create_error import truncate_fastq, contamination, write_sample_sheet
 
 
 def create_fastq_file(file_path, records):
@@ -84,10 +83,8 @@ def test_contamination():
 
     # Create dummy contaminant assembly file
     with open(contaminant_assembly, "w", encoding="utf-8") as f:
-        seq = 'ACTATACGAGAGATACATACATACATATA' * 30
-        f.write(
-            f">contaminant\n{seq}"
-        )
+        seq = "ACTATACGAGAGATACATACATACATATA" * 30
+        f.write(f">contaminant\n{seq}")
 
     contamination(
         input_r1,
@@ -105,3 +102,45 @@ def test_contamination():
     os.remove(contaminant_assembly)
     os.remove(output_r1)
     os.remove(output_r2)
+
+
+def test_write_sample_sheet():
+    output_dir = "."
+    full_sample_list = [
+        {
+            "public_name": "sample01",
+            "r1": "sample01_R1.fastq.gz",
+            "r2": "sample01_R2.fastq.gz",
+            "SPECIES": "species1",
+            "QC": "Unknown",
+            "ERROR": "Unknown",
+            "ST": "Unknown",
+            "AMR": "Unknown",
+            "Notes": "",
+        },
+        {
+            "public_name": "sample02",
+            "r1": "sample02_R1.fastq.gz",
+            "r2": "sample02_R2.fastq.gz",
+            "SPECIES": "species2",
+            "QC": "Unknown",
+            "ERROR": "Unknown",
+            "ST": "Unknown",
+            "AMR": "Unknown",
+            "Notes": "",
+        },
+    ]
+
+    write_sample_sheet(output_dir, full_sample_list)
+    expected_output = [
+        "ID,R1,R2,SPECIES,QC,ERROR,ST,AMR,Notes\n",
+        "sample01,sample01_R1.fastq.gz,sample01_R2.fastq.gz,species1,Unknown,Unknown,Unknown,Unknown,\n",
+        "sample02,sample02_R1.fastq.gz,sample02_R2.fastq.gz,species2,Unknown,Unknown,Unknown,Unknown,\n",
+    ]
+
+    with open(os.path.join(output_dir, "sample_sheet.csv"), "r", encoding="utf-8") as f:
+        lines = f.readlines()
+
+    assert lines == expected_output
+
+    os.remove(os.path.join(output_dir, "sample_sheet.csv"))
