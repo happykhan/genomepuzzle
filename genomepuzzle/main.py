@@ -9,6 +9,8 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from genomepuzzle.create_error import introduce_errors
 from genomepuzzle.simulate_reads import simulate_reads
+from genomepuzzle.rapid import rapid
+from genomepuzzle.contamination import contamination_menu
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -112,6 +114,74 @@ def parse_arguments():
             args.error_proportion,
             args.contamination_list,
             args.output_dir,
+            args.random_seed,
+        )
+    )
+    # Subparser for rapid test (generate small datasets)
+    rapid_parser = subparsers.add_parser("rapid", help="Generate small genome assembly datasets")
+    rapid_parser.add_argument(
+        "--samplelist",
+        type=str,
+        help="List of samples to use",
+        default="rapid_data.csv",
+    )
+    rapid_parser.add_argument(
+        "--output_dir",
+        type=str,
+        help="Directory to save the generated samples",
+        default="rapid_dataset",
+    )
+    rapid_parser.set_defaults(
+        func=lambda args: rapid(
+            args.output_dir,
+            args.samplelist,
+        )
+    )
+    contaimination_parser = subparsers.add_parser("contamination", help="Generate contamination samples")
+    contaimination_parser.add_argument(
+        "--num_samples", type=int, help="Number of samples to generate", default=10
+    )
+    contaimination_parser.add_argument(
+        "--samplelist",
+        type=str,
+        help="List of samples to use",
+        default="samplelist.csv",
+    )
+    contaimination_parser.add_argument(
+        "--species",
+        type=str,
+        help="Species to use for generating samples",
+        default="K. pneumoniae",
+    )
+    contaimination_parser.add_argument(
+        "--type",
+        type=str,
+        choices=["Species", "ST"],
+        help="Contamination type to use for generating samples (Species or ST)",
+        default="Species",
+    )
+    contaimination_parser.add_argument(
+        "--random_seed", type=int, help="Random seed for reproducibility", default=42
+    )    
+    contaimination_parser.add_argument(
+        "--output_dir",
+        type=str,
+        help="Directory to save the generated samples",
+        default="contamination_dataset",
+    )
+    contaimination_parser.add_argument(
+        "--assemble",
+        action="store_true",
+        help="Flag to indicate if the samples should be assembled",
+    )
+    contaimination_parser.set_defaults(
+        func=lambda args: contamination_menu(
+            args.num_samples,
+            args.samplelist,
+            args.species,
+            args.type,
+            args.output_dir,
+            args.assmble,
             args.random_seed,
         )
     )

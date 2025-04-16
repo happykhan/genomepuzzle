@@ -56,6 +56,8 @@ def fetch_assembly(accessions, output_dir):
         Info: When the assembly files are downloaded, already present, or successfully unzipped.
         Error: If there is a failure during the unzipping process.
     """
+    if not os.path.exists(output_dir):
+        os.mkdir(output_dir)
     if "ncbi_dataset.zip" not in os.listdir(output_dir):
         accessions = " ".join(accessions)
         command = f"./bin/datasets download genome accession {accessions}"

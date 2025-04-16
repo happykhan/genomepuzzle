@@ -1,3 +1,24 @@
+"""
+This module provides various functions to manipulate and introduce errors into sequencing reads.
+The functions include degrading quality, truncating reads, subsampling reads,
+introducing contamination, and corrupting reads. The module also includes utility functions
+for counting reads and passing through files.
+
+Functions:
+- degrade_quality: Degrade base quality scores randomly, with poorer quality towards the end of each read.
+- truncate_fastq: Truncate reads in a FASTQ file to a specific length.
+- subsample_paired_fastq: Subsample paired-end FASTQ files to reduce coverage.
+- subsample_paired_read_by_count: Subsample a specific number of reads from paired-end FASTQ files.
+- pass_through: Pass through read files to output directory.
+- get_contaminated_read_example: Reads a contamination list file and returns a list of contaminants that
+    are not in the given species list.
+- corrupt_read: Corrupts a read file by writing a null byte at a random position.
+- count_reads: Count the number of reads in a FASTQ file.
+- contamination: Create contaminated reads by simulating from a contaminant assembly and mixing them with
+    input reads.
+- introduce_errors: Introduce errors into sequencing reads based on specified error proportions.
+"""
+
 import random
 import csv
 import logging
@@ -5,6 +26,8 @@ import os
 import shutil
 import gzip
 from genomepuzzle.simulate_reads import run_art, fetch_assembly, cleanup_output_dir
+import subprocess
+
 
 def degrade_quality(
     input_fastq, output_fastq, min_quality=5, max_quality=30, random_seed=42
@@ -98,7 +121,13 @@ def truncate_fastq(input_fastq, output_fastq, truncate_length=75):
 
 
 def subsample_paired_fastq(
-    input_r1, input_r2, output_r1, output_r2, subsample_fraction=0.1, random_seed=42
+    input_r1,
+    input_r2,
+    output_r1,
+    output_r2,
+    subsample_fraction=0.1,
+    random_seed=42,
+    seqtk=True,
 ):
     """
     Subsample paired-end FASTQ files to reduce coverage.
@@ -111,28 +140,100 @@ def subsample_paired_fastq(
     """
     random.seed(random_seed)
     assert 0 < subsample_fraction <= 1, "Subsample fraction must be between 0 and 1."
+    if seqtk:
+        logging.info("Subsampling using seqtk (r1)...")
+        subprocess.run(
+            f"gunzip -c {input_r1} | bin/seqtk sample -s {random_seed} - {subsample_fraction} | gzip > {output_r1}",
+            shell=True,
+            check=True,
+        )
+        logging.info("Subsampling using seqtk (r2)...")
+        subprocess.run(
+            f"gunzip -c {input_r2} | bin/seqtk sample -s {random_seed} - {subsample_fraction} | gzip > {output_r2}",
+            shell=True,
+            check=True,
+        )
+    else:
+        with (
+            gzip.open(input_r1, "rt") as r1,
+            gzip.open(input_r2, "rt") as r2,
+            gzip.open(output_r1, "wt") as out_r1,
+            gzip.open(output_r2, "wt") as out_r2,
+        ):
+            while True:
+                # Read 4 lines for R1 (one full FASTQ record)
+                r1_record = [r1.readline().strip() for _ in range(4)]
+                r2_record = [r2.readline().strip() for _ in range(4)]
 
-    with (
-        gzip.open(input_r1, "rt") as r1,
-        gzip.open(input_r2, "rt") as r2,
-        gzip.open(output_r1, "wt") as out_r1,
-        gzip.open(output_r2, "wt") as out_r2,
-    ):
-        while True:
-            # Read 4 lines for R1 (one full FASTQ record)
-            r1_record = [r1.readline().strip() for _ in range(4)]
-            r2_record = [r2.readline().strip() for _ in range(4)]
+                # Stop at end of file
+                if not r1_record[0] or not r2_record[0]:
+                    break
 
-            # Stop at end of file
-            if not r1_record[0] or not r2_record[0]:
-                break
-
-            # Randomly keep the paired reads based on the subsample fraction
-            if random.random() < subsample_fraction:
-                out_r1.write("\n".join(r1_record) + "\n")
-                out_r2.write("\n".join(r2_record) + "\n")
+                # Randomly keep the paired reads based on the subsample fraction
+                if random.random() < subsample_fraction:
+                    out_r1.write("\n".join(r1_record) + "\n")
+                    out_r2.write("\n".join(r2_record) + "\n")
 
     logging.info("Subsampling complete. Output files saved as:")
+    logging.info("  %s", output_r1)
+    logging.info("  %s", output_r2)
+
+
+def subsample_paired_read_by_count(
+    input_r1, input_r2, output_r1, output_r2, num_reads=1000, random_seed=42, seqtk=True
+):
+    """
+    Subsample a specific number of reads from paired-end FASTQ files.
+
+    Parameters:
+    - input_r1: str, path to the input R1 FASTQ file.
+    - input_r2: str, path to the input R2 FASTQ file.
+    - output_r1: str, path to the output subsampled R1 FASTQ file.
+    - output_r2: str, path to the output subsampled R2 FASTQ file.
+    - num_reads: int, number of reads to subsample.
+    - random_seed: int, seed for the random number generator.
+    """
+    random.seed(random_seed)
+    if seqtk:
+        logging.info("Subsampling by count using seqtk (r1)...")
+        subprocess.run(
+            f"gunzip -c {input_r1} | bin/seqtk sample -s {random_seed} - {num_reads} | gzip > {output_r1}",
+            shell=True,
+            check=True,
+        )
+        logging.info("Subsampling by count using seqtk (r2)...")
+        subprocess.run(
+            f"gunzip -c {input_r2} | bin/seqtk sample -s {random_seed} - {num_reads} | gzip > {output_r2}",
+            shell=True,
+            check=True,
+        )
+    else:
+        with (
+            gzip.open(input_r1, "rt") as r1,
+            gzip.open(input_r2, "rt") as r2,
+            gzip.open(output_r1, "wt") as out_r1,
+            gzip.open(output_r2, "wt") as out_r2,
+        ):
+            reads_r1 = []
+            reads_r2 = []
+
+            while True:
+                r1_record = [r1.readline().strip() for _ in range(4)]
+                r2_record = [r2.readline().strip() for _ in range(4)]
+
+                if not r1_record[0] or not r2_record[0]:
+                    break
+
+                reads_r1.append(r1_record)
+                reads_r2.append(r2_record)
+
+            selected_indices = random.sample(range(len(reads_r1)), int(num_reads))
+
+            for idx in selected_indices:
+                out_r1.write("\n".join(reads_r1[idx]) + "\n")
+                out_r2.write("\n".join(reads_r2[idx]) + "\n")
+
+    logging.info("Subsampling by count complete. Output files saved as:")
     logging.info("  %s", output_r1)
     logging.info("  %s", output_r2)
 
@@ -196,6 +297,23 @@ def corrupt_read(sample, output_dir, random_seed=42):
     return sample
 
 
+def count_reads(fastq_file):
+    """
+    Count the number of reads in a FASTQ file.
+
+    Parameters:
+    - fastq_file: str, path to the FASTQ file.
+
+    Returns:
+    - int, number of reads in the FASTQ file.
+    """
+    count = 0
+    with gzip.open(fastq_file, "rt") as f:
+        for _ in f:
+            count += 1
+    return count // 4
+
+
 def contamination(
     input_r1,
     input_r2,
@@ -225,17 +343,25 @@ def contamination(
     None
     """
     fetch_assembly([contaminant_assembly], output_dir)
-    ass_dir = os.path.join(output_dir, 'ncbi_dataset', 'data' )
-    ass_dir = [os.path.join(ass_dir, x) for x in os.listdir(ass_dir) if x.startswith(contaminant_assembly)][0]
+    ass_dir = os.path.join(output_dir, "ncbi_dataset", "data")
+    ass_dir = [
+        os.path.join(ass_dir, x)
+        for x in os.listdir(ass_dir)
+        if x.startswith(contaminant_assembly)
+    ][0]
 
-    contaminant_assembly_path = [os.path.join(ass_dir, x) for x in os.listdir(ass_dir) if x.startswith(contaminant_assembly)][0]
-    # output_dir/ncbi_dataset/data/dataset_catalog.json 
+    contaminant_assembly_path = [
+        os.path.join(ass_dir, x)
+        for x in os.listdir(ass_dir)
+        if x.startswith(contaminant_assembly)
+    ][0]
+    # output_dir/ncbi_dataset/data/dataset_catalog.json
 
     sample = {
         "public_name": "contaminant",
         "platform": "HS25",
         "read_length": 150,
-        "coverage": percentage,
+        "coverage": 10,
         "fragment_length": 300,
         "standard_deviation": 30,
         "random_seed": random_seed,
@@ -253,6 +379,32 @@ def contamination(
         contaminant_output_r2,
     )
     # mix the reads with the contaminant simulated reads
+    # how many reads are in input_r1 ?
+    num_reads = int(round(count_reads(input_r1)))
+    adj_num_reads = (percentage / 100) * num_reads
+    logging.info("Number of reads in input_r1: %d", num_reads)
+    logging.info("Number of reads to mix in: %d", adj_num_reads)
+    # pick subsample adj_num_reads from contaminant_output_r1 and contaminant_output_r2
+    subsample_contaminant_output_r1 = os.path.join(
+        output_dir, "sub_contaminant_r1.fastq.gz"
+    )
+    subsample_contaminant_output_r2 = os.path.join(
+        output_dir, "sub_contaminant_r2.fastq.gz"
+    )
+    logging.info(
+        "Subsampling %d reads from contaminant reads (%d percent)",
+        adj_num_reads,
+        percentage,
+    )
+    subsample_paired_read_by_count(
+        input_r1,
+        input_r2,
+        subsample_contaminant_output_r1,
+        subsample_contaminant_output_r2,
+        adj_num_reads,
+        random_seed,
+    )
+    logging.info("Subsampling %d percent from real reads", (100 - percentage))
     subsample_paired_fastq(
         input_r1,
         input_r2,
@@ -261,20 +413,19 @@ def contamination(
         (100 - percentage) / 100,
         random_seed=random_seed,
     )
-    # append the contaminant reads to the output files (gzip)
-    with (
-        gzip.open(output_r1, "ab") as r1_out,
-        gzip.open(contaminant_output_r1, "rb") as r1_in,
-    ):
-        shutil.copyfileobj(r1_in, r1_out)
-    with (
-        gzip.open(output_r2, "ab") as r2_out,
-        gzip.open(contaminant_output_r2, "rb") as r2_in,
-    ):
-        shutil.copyfileobj(r2_in, r2_out)
-    # remove the temporary contaminant files
+    logging.info("Appending the contaminant reads to the output files - r1")
+    subprocess.run(
+        f"cat {subsample_contaminant_output_r1} >> {output_r1}", shell=True, check=True
+    )
+    logging.info("Appending the contaminant reads to the output files - r2")
+    subprocess.run(
+        f"cat {subsample_contaminant_output_r2} >> {output_r2}", shell=True, check=True
+    )
+    logging.info("Removing temporary files...")
     os.remove(contaminant_output_r1)
+    os.remove(subsample_contaminant_output_r1)
     os.remove(contaminant_output_r2)
+    os.remove(subsample_contaminant_output_r2)
     cleanup_output_dir(output_dir)
 
 
@@ -289,16 +440,19 @@ def introduce_errors(
     error_proportion (float): Proportion of samples to introduce errors into.
     contamination_list_file (str): Path to the file containing contamination details.
     output_dir (str): Directory to save the output files with introduced errors.
-    random_seed (int, optional): Seed for random number generator to ensure reproducibility. Default is 42.
+    random_seed (int, optional): Seed for random number generator to ensure
+                                 reproducibility. Default is 42.
 
     Returns:
     None
 
-    This function reads the sample information from the provided sample_sheet, introduces various types of errors
-    (e.g., truncated reads, corrupted reads, contamination, poor quality, low coverage) into a proportion of the samples,
-    and writes the modified samples to the output directory. The types of errors and their proportions are determined
-    randomly based on the provided error_proportion. The function also updates the sample sheet with details of the
-    introduced errors and saves it to the output directory.
+    This function reads the sample information from the provided sample_sheet,
+    introduces various types of errors (e.g., truncated reads, corrupted reads,
+    contamination, poor quality, low coverage) into a proportion of the samples,
+    and writes the modified samples to the output directory. The types of errors
+    and their proportions are determined randomly based on the provided
+    error_proportion. The function also updates the sample sheet with details of
+    the introduced errors and saves it to the output directory.
     """
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -326,25 +480,28 @@ def introduce_errors(
         full_sample_list, int(len(full_sample_list) * error_proportion)
     )
     for sample in error_samples:
-        if random.random() < 0.5:
+        if random.random() < 0.4:
             sample["ERROR"] = "CONTAMINATED"
-        elif random.random() < 0.3:
+        elif random.random() < 0.2:
             sample["ERROR"] = "LOW_COVERAGE"
         else:
             sample["ERROR"] = random.choice(types_of_errors)
         sample["QC"] = "FAILED"
         sample["Notes"] = "Error introduced"
-
-    for sample in full_sample_list:
+    used_contaminants = []
+    for i, sample in enumerate(full_sample_list):
+        count = i+1
+        zfill_count = str(count).zfill(2)
+        sample['public_name'] = f"sample{zfill_count}"
         input_dir = os.path.dirname(sample_sheet)
         input_r1 = os.path.join(input_dir, os.path.basename(sample["r1"]))
         input_r2 = os.path.join(input_dir, os.path.basename(sample["r2"]))
-        output_r1 = os.path.join(output_dir, os.path.basename(sample["r1"]))
-        output_r2 = os.path.join(output_dir, os.path.basename(sample["r2"]))
+        output_r1 = os.path.join(output_dir, sample['public_name'] + "_R1.fastq.gz")
+        output_r2 = os.path.join(output_dir, sample['public_name'] + "_R2.fastq.gz")
         error_type = sample["ERROR"]
         if error_type == "NONE":
             pass_through(input_r1, input_r2, output_r1, output_r2)
-            sample["Notes"] += " No changes."
+            sample["Notes"] = "No changes."
         elif error_type == "TRUNCATED":
             truncate_length = random.randint(5, 100)
             file_to_truncate = input_r1
@@ -369,6 +526,10 @@ def introduce_errors(
                 sample["Notes"] = "Corrupted read 2"
         elif error_type == "CONTAMINATED":
             contaminant = random.choice(contaminant_list)
+            used_contaminants.append(contaminant)
+            contaminant_list.remove(contaminant)
+            if len(contaminant_list) == 0:
+                contaminant_list = used_contaminants
             contaminant_assembly_file = contaminant["ASSEMBLY"]
             percentage = random.randint(20, 80)
             contamination(
@@ -381,8 +542,8 @@ def introduce_errors(
                 percentage,
                 random_seed,
             )
-            sample["Notes"] += (
-                f" Contaminated with {contaminant.get('SAMPLE_NAME')} at {percentage}%"
+            sample["Notes"] = (
+                f"Contaminated with {contaminant.get('SAMPLE_NAME')} at {percentage}%"
             )
         elif error_type == "POOR_QUALITY":
             min_quality = random.randint(5, 9)
@@ -404,6 +565,7 @@ def introduce_errors(
             sample["Notes"] += f" Quality degraded to {min_quality}-{max_quality}"
         elif error_type == "LOW_COVERAGE":
             subsample_fraction = random.uniform(0.1, 0.4)
+            sample["Notes"] = f"Low coverage at {round(subsample_fraction, 2)}"
             subsample_paired_fastq(
                 input_r1,
                 input_r2,
@@ -416,9 +578,34 @@ def introduce_errors(
             logging.error("Error type %s not implemented", error_type)
             raise ValueError(f"Error type {error_type} not implemented")
         # write sample sheet
-    sample_sheet = os.path.join(output_dir, "sample_sheet.csv")
+        sample['r1'] = os.path.basename(output_r1)
+        sample['r2'] = os.path.basename(output_r2)
+    write_answer_sheet(output_dir, full_sample_list)
+    write_sample_sheet(output_dir, full_sample_list)
+
+def write_answer_sheet(output_dir, full_sample_list):
+    sample_sheet = os.path.join(output_dir, "answer_sheet.csv")
     with open(sample_sheet, "w", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=full_sample_list[0].keys())
         writer.writeheader()
         for sample in full_sample_list:
             writer.writerow(sample)
+
+def write_sample_sheet(output_dir, full_sample_list):
+    # Write a version of sample_sheet with only columns public_name, r1, r2, species
+    filtered_sample_sheet = os.path.join(output_dir, "sample_sheet.csv")
+    with open(filtered_sample_sheet, "w", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=["ID", "R1", "R2", "SPECIES", "QC", "ERROR", "ST", "AMR", "Notes"])
+        writer.writeheader()
+        for sample in full_sample_list:
+            writer.writerow({
+                "ID": sample["public_name"],
+                "R1": sample["r1"],
+                "R2": sample["r2"],
+                "SPECIES": sample["SPECIES"],
+                "QC": 'Unknown',
+                "ERROR": 'Unknown',
+                "ST": 'Unknown',
+                "AMR": 'Unknown',
+                'Notes':''
+            })
