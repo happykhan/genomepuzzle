@@ -1,0 +1,16 @@
+Sample,Cluster,Host,Location,Collection Date,Phenotype,SPECIES
+Sample01,-,Human,Greater London,2024-02-15,A,Klebsiella pneumoniae
+Sample02,-,Human,West Midlands,2024-03-10,A,Klebsiella pneumoniae
+Sample03,-,Environmental,Greater Manchester,2024-01-20,A,Klebsiella pneumoniae
+Sample04,-,Human,Merseyside,2024-02-05,B,Klebsiella pneumoniae
+Sample05,-,Human,South Yorkshire,2024-03-25,A,Klebsiella pneumoniae
+Sample06,-,Human,West Yorkshire,2024-02-17,A,Klebsiella pneumoniae
+Sample07,-,Human,Devon,2024-01-30,A,Klebsiella pneumoniae
+Sample08,1,Human,Cambridgeshire,2024-02-28,A,Klebsiella pneumoniae
+Sample09,1,Human,Essex,2024-03-12,A,Klebsiella pneumoniae
+Sample10,1,Human,Greater London,2024-02-14,A,Klebsiella pneumoniae
+Sample11,1,Human,West Midlands,2024-03-09,A,Klebsiella pneumoniae
+Sample12,1,Human,Greater London,2024-01-22,A,Klebsiella pneumoniae
+Sample13,1,Human,Greater London,2024-02-07,A,Klebsiella pneumoniae
+Sample14,1,Human,Surrey,2024-03-27,A,Klebsiella pneumoniae
+Outgroup,-,Environmental,Cornwall,2023-12-31,A,Klebsiella pneumoniae
