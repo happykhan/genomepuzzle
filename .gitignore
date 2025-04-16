@@ -5,8 +5,11 @@ __pycache__/
 output/
 output_dataset/
 error_models/
-kleb.csv
 fasterq* 
+work/
+ghru_output_dataset/
+.DS_Store
+.vscode/
 
 # C extensions
 *.so
