@@ -30,6 +30,12 @@ HYBRID_ERROR_TYPES = [
     "CONTAMINATED",
 ]
 
+SHORT_COVERAGE_FRACTION = 0.15
+LONG_COVERAGE_FRACTION = 0.15
+LONG_READ_MIN_QUALITY = 5
+LONG_READ_MAX_QUALITY = 14
+CONTAMINATION_FRACTION = 0.30
+
 
 class HybridImplant(object):
     def __init__(self, error_type, severity, notes):
@@ -48,6 +54,7 @@ class HybridSampleContext(object):
         self.r2 = None
         self.long_reads = None
         self.implant = implant
+        self.implant_count = 0
 
 
 def count_reads(fastq_file):
@@ -148,8 +155,7 @@ def _make_temp_path(output_dir, public_name, suffix):
 
 
 def apply_low_short_coverage(context, output_dir):
-    rng = random.Random(context.seed)
-    fraction = rng.uniform(0.08, 0.25)
+    fraction = SHORT_COVERAGE_FRACTION
     new_r1 = os.path.join(output_dir, "{name}_R1.fastq.gz".format(name=context.public_name))
     new_r2 = os.path.join(output_dir, "{name}_R2.fastq.gz".format(name=context.public_name))
     subsample_paired_fastq(context.r1, context.r2, new_r1, new_r2, fraction, context.seed)
@@ -160,13 +166,13 @@ def apply_low_short_coverage(context, output_dir):
     context.implant = HybridImplant(
         "LOW_SHORT_COVERAGE",
         round(fraction, 4),
-        "Paired reads subsampled to {:.1f}% of original".format(fraction * 100),
+        "Paired reads subsampled to {:.0f}% of original".format(fraction * 100),
     )
+    context.implant_count += 1
 
 
 def apply_low_long_coverage(context, output_dir):
-    rng = random.Random(context.seed)
-    fraction = rng.uniform(0.08, 0.25)
+    fraction = LONG_COVERAGE_FRACTION
     new_long = os.path.join(output_dir, "{name}_long.fastq.gz".format(name=context.public_name))
     subsample_single_fastq(context.long_reads, new_long, fraction, context.seed)
     os.remove(context.long_reads)
@@ -174,14 +180,14 @@ def apply_low_long_coverage(context, output_dir):
     context.implant = HybridImplant(
         "LOW_LONG_COVERAGE",
         round(fraction, 4),
-        "Long reads subsampled to {:.1f}% of original".format(fraction * 100),
+        "Long reads subsampled to {:.0f}% of original".format(fraction * 100),
     )
+    context.implant_count += 1
 
 
 def apply_long_read_quality(context, output_dir):
-    rng = random.Random(context.seed)
-    min_quality = rng.randint(3, 10)
-    max_quality = rng.randint(12, 22)
+    min_quality = LONG_READ_MIN_QUALITY
+    max_quality = LONG_READ_MAX_QUALITY
     new_long = os.path.join(output_dir, "{name}_long.fastq.gz".format(name=context.public_name))
     degrade_quality(
         context.long_reads,
@@ -197,11 +203,11 @@ def apply_long_read_quality(context, output_dir):
         "{min_q}-{max_q}".format(min_q=min_quality, max_q=max_quality),
         "Long-read qualities degraded",
     )
+    context.implant_count += 1
 
 
 def apply_contamination(context, contaminant_record, output_dir):
-    rng = random.Random(context.seed)
-    contamination_fraction = rng.uniform(0.15, 0.45)
+    contamination_fraction = CONTAMINATION_FRACTION
     contaminant_context = HybridSampleContext(
         record=dict(contaminant_record),
         public_name="contaminant_{name}_{accession}".format(
@@ -270,6 +276,7 @@ def apply_contamination(context, contaminant_record, output_dir):
             accession=contaminant_record["accession"]
         ),
     )
+    context.implant_count += 1
 
 
 def write_csv(path, rows, fieldnames):
@@ -307,6 +314,12 @@ def implant_context(context, error_type, contaminant_records, output_dir):
             apply_contamination(context, contaminant_record, output_dir)
         else:
             logging.warning("No contaminant available for %s, leaving sample as NORMAL", context.public_name)
+    if context.implant_count > 1:
+        raise ValueError(
+            "Hybrid sample {name} received multiple implants".format(
+                name=context.public_name
+            )
+        )
 
 
 def answer_row(context):

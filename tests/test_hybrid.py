@@ -1,4 +1,13 @@
-from genomepuzzle.hybrid import HYBRID_ERROR_TYPES, build_hybrid_error_plan, stable_public_name
+from genomepuzzle.hybrid import (
+    CONTAMINATION_FRACTION,
+    HYBRID_ERROR_TYPES,
+    LONG_COVERAGE_FRACTION,
+    LONG_READ_MAX_QUALITY,
+    LONG_READ_MIN_QUALITY,
+    SHORT_COVERAGE_FRACTION,
+    build_hybrid_error_plan,
+    stable_public_name,
+)
 
 
 def test_build_hybrid_error_plan_practice():
@@ -29,3 +38,11 @@ def test_build_hybrid_error_plan_challenge_distribution():
 def test_stable_public_name_reproducible():
     assert stable_public_name("GCF_000001.1", 42) == stable_public_name("GCF_000001.1", 42)
     assert stable_public_name("GCF_000001.1", 42) != stable_public_name("GCF_000001.1", 43)
+
+
+def test_hybrid_implant_severity_bands_are_fixed_and_obvious():
+    assert SHORT_COVERAGE_FRACTION == 0.15
+    assert LONG_COVERAGE_FRACTION == 0.15
+    assert CONTAMINATION_FRACTION == 0.30
+    assert LONG_READ_MIN_QUALITY == 5
+    assert LONG_READ_MAX_QUALITY == 14
