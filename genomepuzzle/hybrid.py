@@ -218,6 +218,7 @@ def apply_contamination(context, contaminant_record, output_dir):
         or contaminant_record.get("species")
         or "Unknown",
         seed=context.seed + 101,
+        implant=HybridImplant("NORMAL", "none", "Temporary contamination source"),
     )
     simulate_base_reads(contaminant_context, output_dir)
 
