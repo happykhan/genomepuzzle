@@ -191,6 +191,7 @@ def subsample_paired_read_by_count(
     - random_seed: int, seed for the random number generator.
     """
     random.seed(random_seed)
+    num_reads = max(1, int(num_reads))
     if seqtk:
         logging.info("Subsampling by count using seqtk (r1)...")
         subprocess.run(
@@ -268,6 +269,7 @@ def subsample_single_fastq_by_count(
     Subsample a single FASTQ file by read count.
     """
     random.seed(random_seed)
+    num_reads = max(1, int(num_reads))
     if seqtk:
         logging.info("Subsampling single fastq by count using seqtk...")
         subprocess.run(
@@ -459,8 +461,8 @@ def contamination(
         percentage,
     )
     subsample_paired_read_by_count(
-        input_r1,
-        input_r2,
+        contaminant_output_r1,
+        contaminant_output_r2,
         subsample_contaminant_output_r1,
         subsample_contaminant_output_r2,
         adj_num_reads,

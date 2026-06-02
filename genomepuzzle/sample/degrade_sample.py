@@ -58,7 +58,7 @@ class DegradedSample(BasicSample):
         Returns:
             None
         """
-        if random_seed is None:
+        if random_seed is not None:
             random.seed(random_seed)
             decrement = random.randint(10, 30)
         self.decrement = decrement
@@ -72,7 +72,7 @@ class DegradedSample(BasicSample):
         return self.modified_r1, self.modified_r2
 
     def _degrade_fastq_file(self, fastq_file, output_fastq, decrement, random_seed=42):
-        command = f"bin/seqtk seq -Q{decrement} {fastq_file} | gzip > {output_fastq}",
+        command = f"bin/seqtk seq -Q{decrement} {fastq_file} | gzip > {output_fastq}"
         subprocess.run(
             command,
             shell=True,

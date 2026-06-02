@@ -11,6 +11,7 @@ from genomepuzzle.create_error import introduce_errors
 from genomepuzzle.simulate_reads import simulate_reads
 from genomepuzzle.rapid import rapid
 from genomepuzzle.hybrid import create_hybrid_dataset
+from genomepuzzle.contamination import contamination_menu
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -215,15 +216,13 @@ def parse_arguments():
         help="Flag to indicate if the samples should be assembled",
     )
     contaimination_parser.set_defaults(
-        func=lambda args: __import__(
-            "genomepuzzle.contamination", fromlist=["contamination_menu"]
-        ).contamination_menu(
+        func=lambda args: contamination_menu(
             args.num_samples,
             args.samplelist,
             args.species,
             args.type,
             args.output_dir,
-            args.assmble,
+            args.assemble,
             args.random_seed,
         )
     )

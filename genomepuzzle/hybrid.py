@@ -9,7 +9,6 @@ import json
 import logging
 import os
 import random
-import shutil
 from collections import Counter
 
 from genomepuzzle.create_error import (
@@ -30,6 +29,25 @@ HYBRID_ERROR_TYPES = [
     "LONG_READ_QUALITY",
     "CONTAMINATED",
 ]
+
+
+class HybridImplant(object):
+    def __init__(self, error_type, severity, notes):
+        self.error_type = error_type
+        self.severity = severity
+        self.notes = notes
+
+
+class HybridSampleContext(object):
+    def __init__(self, record, public_name, species, seed, implant):
+        self.record = record
+        self.public_name = public_name
+        self.species = species
+        self.seed = seed
+        self.r1 = None
+        self.r2 = None
+        self.long_reads = None
+        self.implant = implant
 
 
 def count_reads(fastq_file):
@@ -75,8 +93,8 @@ def build_hybrid_error_plan(num_samples, mode="challenge", random_seed=42):
             "LONG_READ_QUALITY",
         ] + ["NORMAL"] * max(0, num_samples - 8)
     plan = plan[:num_samples]
-    random.seed(random_seed)
-    random.shuffle(plan)
+    rng = random.Random(random_seed)
+    rng.shuffle(plan)
     return plan
 
 
@@ -95,136 +113,163 @@ def get_assembly_path(output_dir, accession):
     return fasta_files[0]
 
 
-def simulate_base_reads(record, output_dir, random_seed=42):
-    accession = record["accession"]
-    public_name = record["public_name"]
-    assembly_path = get_assembly_path(output_dir, accession)
-    short_r1 = os.path.join(output_dir, "{name}_R1.fastq.gz".format(name=public_name))
-    short_r2 = os.path.join(output_dir, "{name}_R2.fastq.gz".format(name=public_name))
+def simulate_base_reads(context, output_dir):
+    assembly_path = get_assembly_path(output_dir, context.record["accession"])
+    short_r1 = os.path.join(output_dir, "{name}_R1.fastq.gz".format(name=context.public_name))
+    short_r2 = os.path.join(output_dir, "{name}_R2.fastq.gz".format(name=context.public_name))
     sample = {
-        "public_name": public_name,
+        "public_name": context.public_name,
         "platform": "HS25",
         "read_length": 150,
-        "coverage": float(record.get("short_read_coverage", 40)),
+        "coverage": float(context.record.get("short_read_coverage", 40)),
         "fragment_length": 300,
         "standard_deviation": 50,
-        "random_seed": random_seed,
+        "random_seed": context.seed,
     }
     run_art(sample, output_dir, assembly_path, short_r1, short_r2)
-    long_output = run_badread(public_name, assembly_path, output_dir)["long_reads_path"]
-    return short_r1, short_r2, long_output
+    long_output = run_badread(context.public_name, assembly_path, output_dir)["long_reads_path"]
+    context.r1 = short_r1
+    context.r2 = short_r2
+    context.long_reads = long_output
 
 
-def choose_contaminant(target_record, contaminant_records, random_seed):
+def choose_contaminant(target_record, contaminant_records, rng):
     compatible = [
         row for row in contaminant_records
         if row.get("organism_organismname") != target_record.get("organism_organismname")
     ]
     if not compatible:
         compatible = [row for row in contaminant_records if row["accession"] != target_record["accession"]]
-    random.seed(random_seed)
-    return random.choice(compatible) if compatible else None
+    return rng.choice(compatible) if compatible else None
 
 
-def apply_low_short_coverage(r1, r2, output_prefix, random_seed):
-    fraction = random.uniform(0.08, 0.25)
-    new_r1 = "{prefix}_R1.fastq.gz".format(prefix=output_prefix)
-    new_r2 = "{prefix}_R2.fastq.gz".format(prefix=output_prefix)
-    subsample_paired_fastq(r1, r2, new_r1, new_r2, fraction, random_seed)
-    return new_r1, new_r2, {
-        "error_type": "LOW_SHORT_COVERAGE",
-        "severity": round(fraction, 4),
-        "notes": "Paired reads subsampled to {:.1f}% of original".format(fraction * 100),
-    }
+def _make_temp_path(output_dir, public_name, suffix):
+    return os.path.join(output_dir, "{name}_{suffix}".format(name=public_name, suffix=suffix))
 
 
-def apply_low_long_coverage(long_reads, output_prefix, random_seed):
-    fraction = random.uniform(0.08, 0.25)
-    new_long = "{prefix}_long.fastq.gz".format(prefix=output_prefix)
-    subsample_single_fastq(long_reads, new_long, fraction, random_seed)
-    return new_long, {
-        "error_type": "LOW_LONG_COVERAGE",
-        "severity": round(fraction, 4),
-        "notes": "Long reads subsampled to {:.1f}% of original".format(fraction * 100),
-    }
+def apply_low_short_coverage(context, output_dir):
+    rng = random.Random(context.seed)
+    fraction = rng.uniform(0.08, 0.25)
+    new_r1 = os.path.join(output_dir, "{name}_R1.fastq.gz".format(name=context.public_name))
+    new_r2 = os.path.join(output_dir, "{name}_R2.fastq.gz".format(name=context.public_name))
+    subsample_paired_fastq(context.r1, context.r2, new_r1, new_r2, fraction, context.seed)
+    os.remove(context.r1)
+    os.remove(context.r2)
+    context.r1 = new_r1
+    context.r2 = new_r2
+    context.implant = HybridImplant(
+        "LOW_SHORT_COVERAGE",
+        round(fraction, 4),
+        "Paired reads subsampled to {:.1f}% of original".format(fraction * 100),
+    )
 
 
-def apply_long_read_quality(long_reads, output_prefix, random_seed):
-    min_quality = random.randint(3, 10)
-    max_quality = random.randint(12, 22)
-    new_long = "{prefix}_long.fastq.gz".format(prefix=output_prefix)
-    degrade_quality(long_reads, new_long, min_quality=min_quality, max_quality=max_quality, random_seed=random_seed)
-    return new_long, {
-        "error_type": "LONG_READ_QUALITY",
-        "severity": "{min_q}-{max_q}".format(min_q=min_quality, max_q=max_quality),
-        "notes": "Long-read qualities degraded",
-    }
+def apply_low_long_coverage(context, output_dir):
+    rng = random.Random(context.seed)
+    fraction = rng.uniform(0.08, 0.25)
+    new_long = os.path.join(output_dir, "{name}_long.fastq.gz".format(name=context.public_name))
+    subsample_single_fastq(context.long_reads, new_long, fraction, context.seed)
+    os.remove(context.long_reads)
+    context.long_reads = new_long
+    context.implant = HybridImplant(
+        "LOW_LONG_COVERAGE",
+        round(fraction, 4),
+        "Long reads subsampled to {:.1f}% of original".format(fraction * 100),
+    )
 
 
-def apply_contamination(
-    record,
-    r1,
-    r2,
-    long_reads,
-    contaminant_record,
-    output_dir,
-    output_prefix,
-    random_seed,
-):
-    contamination_fraction = random.uniform(0.15, 0.45)
-    contaminant_public_name = "contaminant_{name}".format(name=record["public_name"])
-    contaminant_tmp = dict(contaminant_record)
-    contaminant_tmp["public_name"] = contaminant_public_name
-    contam_r1, contam_r2, contam_long = simulate_base_reads(contaminant_tmp, output_dir, random_seed + 101)
+def apply_long_read_quality(context, output_dir):
+    rng = random.Random(context.seed)
+    min_quality = rng.randint(3, 10)
+    max_quality = rng.randint(12, 22)
+    new_long = os.path.join(output_dir, "{name}_long.fastq.gz".format(name=context.public_name))
+    degrade_quality(
+        context.long_reads,
+        new_long,
+        min_quality=min_quality,
+        max_quality=max_quality,
+        random_seed=context.seed,
+    )
+    os.remove(context.long_reads)
+    context.long_reads = new_long
+    context.implant = HybridImplant(
+        "LONG_READ_QUALITY",
+        "{min_q}-{max_q}".format(min_q=min_quality, max_q=max_quality),
+        "Long-read qualities degraded",
+    )
 
-    original_short_reads = count_reads(r1)
-    contam_short_reads = max(1, int(round(original_short_reads * contamination_fraction)))
-    clean_short_reads = max(1, original_short_reads - contam_short_reads)
 
-    original_long_reads = count_reads(long_reads)
-    contam_long_reads = max(1, int(round(original_long_reads * contamination_fraction)))
-    clean_long_reads = max(1, original_long_reads - contam_long_reads)
+def apply_contamination(context, contaminant_record, output_dir):
+    rng = random.Random(context.seed)
+    contamination_fraction = rng.uniform(0.15, 0.45)
+    contaminant_context = HybridSampleContext(
+        record=dict(contaminant_record),
+        public_name="contaminant_{name}_{accession}".format(
+            name=context.public_name,
+            accession=contaminant_record["accession"].replace(".", "_"),
+        ),
+        species=contaminant_record.get("organism_organismname")
+        or contaminant_record.get("species")
+        or "Unknown",
+        seed=context.seed + 101,
+    )
+    simulate_base_reads(contaminant_context, output_dir)
 
-    clean_r1 = os.path.join(output_dir, "tmp_clean_r1.fastq.gz")
-    clean_r2 = os.path.join(output_dir, "tmp_clean_r2.fastq.gz")
-    dirty_r1 = os.path.join(output_dir, "tmp_dirty_r1.fastq.gz")
-    dirty_r2 = os.path.join(output_dir, "tmp_dirty_r2.fastq.gz")
-    clean_long = os.path.join(output_dir, "tmp_clean_long.fastq.gz")
-    dirty_long = os.path.join(output_dir, "tmp_dirty_long.fastq.gz")
+    original_short_reads = count_reads(context.r1)
+    contaminant_short_reads = max(1, int(round(original_short_reads * contamination_fraction)))
+    clean_short_reads = max(1, original_short_reads - contaminant_short_reads)
+    original_long_reads = count_reads(context.long_reads)
+    contaminant_long_reads = max(1, int(round(original_long_reads * contamination_fraction)))
+    clean_long_reads = max(1, original_long_reads - contaminant_long_reads)
 
-    subsample_single_fastq_by_count(long_reads, clean_long, clean_long_reads, random_seed)
-    subsample_single_fastq_by_count(contam_long, dirty_long, contam_long_reads, random_seed)
-    subsample_single_fastq_by_count(contam_r1, dirty_r1, contam_short_reads, random_seed)
-    subsample_single_fastq_by_count(contam_r2, dirty_r2, contam_short_reads, random_seed)
-    subsample_single_fastq_by_count(r1, clean_r1, clean_short_reads, random_seed)
-    subsample_single_fastq_by_count(r2, clean_r2, clean_short_reads, random_seed)
+    temp_clean_r1 = _make_temp_path(output_dir, context.public_name, "tmp_clean_r1.fastq.gz")
+    temp_clean_r2 = _make_temp_path(output_dir, context.public_name, "tmp_clean_r2.fastq.gz")
+    temp_dirty_r1 = _make_temp_path(output_dir, context.public_name, "tmp_dirty_r1.fastq.gz")
+    temp_dirty_r2 = _make_temp_path(output_dir, context.public_name, "tmp_dirty_r2.fastq.gz")
+    temp_clean_long = _make_temp_path(output_dir, context.public_name, "tmp_clean_long.fastq.gz")
+    temp_dirty_long = _make_temp_path(output_dir, context.public_name, "tmp_dirty_long.fastq.gz")
 
-    final_r1 = "{prefix}_R1.fastq.gz".format(prefix=output_prefix)
-    final_r2 = "{prefix}_R2.fastq.gz".format(prefix=output_prefix)
-    final_long = "{prefix}_long.fastq.gz".format(prefix=output_prefix)
-    concatenate_fastqs([clean_r1, dirty_r1], final_r1)
-    concatenate_fastqs([clean_r2, dirty_r2], final_r2)
-    concatenate_fastqs([clean_long, dirty_long], final_long)
+    subsample_single_fastq_by_count(context.long_reads, temp_clean_long, clean_long_reads, context.seed)
+    subsample_single_fastq_by_count(contaminant_context.long_reads, temp_dirty_long, contaminant_long_reads, context.seed)
+    subsample_single_fastq_by_count(contaminant_context.r1, temp_dirty_r1, contaminant_short_reads, context.seed)
+    subsample_single_fastq_by_count(contaminant_context.r2, temp_dirty_r2, contaminant_short_reads, context.seed)
+    subsample_single_fastq_by_count(context.r1, temp_clean_r1, clean_short_reads, context.seed)
+    subsample_single_fastq_by_count(context.r2, temp_clean_r2, clean_short_reads, context.seed)
 
-    for temp_file in [
-        clean_r1,
-        clean_r2,
-        dirty_r1,
-        dirty_r2,
-        clean_long,
-        dirty_long,
-        contam_r1,
-        contam_r2,
-        contam_long,
+    final_r1 = os.path.join(output_dir, "{name}_R1.fastq.gz".format(name=context.public_name))
+    final_r2 = os.path.join(output_dir, "{name}_R2.fastq.gz".format(name=context.public_name))
+    final_long = os.path.join(output_dir, "{name}_long.fastq.gz".format(name=context.public_name))
+    concatenate_fastqs([temp_clean_r1, temp_dirty_r1], final_r1)
+    concatenate_fastqs([temp_clean_r2, temp_dirty_r2], final_r2)
+    concatenate_fastqs([temp_clean_long, temp_dirty_long], final_long)
+
+    for path in [
+        context.r1,
+        context.r2,
+        context.long_reads,
+        contaminant_context.r1,
+        contaminant_context.r2,
+        contaminant_context.long_reads,
+        temp_clean_r1,
+        temp_clean_r2,
+        temp_dirty_r1,
+        temp_dirty_r2,
+        temp_clean_long,
+        temp_dirty_long,
     ]:
-        if os.path.exists(temp_file):
-            os.remove(temp_file)
+        if os.path.exists(path):
+            os.remove(path)
 
-    return final_r1, final_r2, final_long, {
-        "error_type": "CONTAMINATED",
-        "severity": round(contamination_fraction, 4),
-        "notes": "Mixed with contaminant accession {accession}".format(accession=contaminant_record["accession"]),
-    }
+    context.r1 = final_r1
+    context.r2 = final_r2
+    context.long_reads = final_long
+    context.implant = HybridImplant(
+        "CONTAMINATED",
+        round(contamination_fraction, 4),
+        "Mixed with contaminant accession {accession}".format(
+            accession=contaminant_record["accession"]
+        ),
+    )
 
 
 def write_csv(path, rows, fieldnames):
@@ -233,6 +278,78 @@ def write_csv(path, rows, fieldnames):
         writer.writeheader()
         for row in rows:
             writer.writerow(row)
+
+
+def make_sample_context(record, index, random_seed):
+    seed = random_seed + index
+    public_name = record.get("public_name") or stable_public_name(record["accession"], seed)
+    species = record.get("organism_organismname") or record.get("species") or "Unknown"
+    return HybridSampleContext(
+        record=dict(record),
+        public_name=public_name,
+        species=species,
+        seed=seed,
+        implant=HybridImplant("NORMAL", "none", "No implant"),
+    )
+
+
+def implant_context(context, error_type, contaminant_records, output_dir):
+    if error_type == "LOW_SHORT_COVERAGE":
+        apply_low_short_coverage(context, output_dir)
+    elif error_type == "LOW_LONG_COVERAGE":
+        apply_low_long_coverage(context, output_dir)
+    elif error_type == "LONG_READ_QUALITY":
+        apply_long_read_quality(context, output_dir)
+    elif error_type == "CONTAMINATED":
+        rng = random.Random(context.seed)
+        contaminant_record = choose_contaminant(context.record, contaminant_records, rng)
+        if contaminant_record:
+            apply_contamination(context, contaminant_record, output_dir)
+        else:
+            logging.warning("No contaminant available for %s, leaving sample as NORMAL", context.public_name)
+
+
+def answer_row(context):
+    expected_qc = "PASSED" if context.implant.error_type == "NORMAL" else "FAILED"
+    return {
+        "public_name": context.public_name,
+        "species": context.species,
+        "reference_accession": context.record["accession"],
+        "tax_classification": context.species,
+        "assembler": "Unknown",
+        "qc": expected_qc,
+        "notes": context.implant.notes,
+        "error_type": context.implant.error_type,
+        "severity": context.implant.severity,
+    }
+
+
+def sample_sheet_row(context):
+    return {
+        "sample_name": context.public_name,
+        "reference_accession": context.record["accession"],
+        "species": context.species,
+        "tax_classification": "",
+        "r1": os.path.basename(context.r1),
+        "r2": os.path.basename(context.r2),
+        "long_reads": os.path.basename(context.long_reads),
+        "assembler": "",
+        "qc": "",
+        "notes": "",
+    }
+
+
+def manifest_row(context):
+    return {
+        "sample_name": context.public_name,
+        "reference_accession": context.record["accession"],
+        "species": context.species,
+        "error_type": context.implant.error_type,
+        "severity": context.implant.severity,
+        "notes": context.implant.notes,
+        "short_read_count": count_reads(context.r1),
+        "long_read_count": count_reads(context.long_reads),
+    }
 
 
 def create_hybrid_dataset(
@@ -255,94 +372,16 @@ def create_hybrid_dataset(
     fetch_assembly(all_accessions, output_dir)
 
     error_plan = build_hybrid_error_plan(len(records), mode=mode, random_seed=random_seed)
-    answer_rows = []
-    sample_rows = []
-    manifest_rows = []
-
+    contexts = []
     for index, (record, error_type) in enumerate(zip(records, error_plan)):
-        seed = random_seed + index
-        public_name = record.get("public_name") or stable_public_name(record["accession"], seed)
-        record["public_name"] = public_name
-        species = record.get("organism_organismname") or record.get("species") or "Unknown"
-        r1, r2, long_reads = simulate_base_reads(record, output_dir, random_seed=seed)
-        metadata = {
-            "error_type": "NORMAL",
-            "severity": "none",
-            "notes": "No implant",
-        }
+        context = make_sample_context(record, index, random_seed)
+        simulate_base_reads(context, output_dir)
+        implant_context(context, error_type, contaminant_records, output_dir)
+        contexts.append(context)
 
-        final_r1 = r1
-        final_r2 = r2
-        final_long = long_reads
-        final_prefix = os.path.join(output_dir, public_name)
-
-        if error_type == "LOW_SHORT_COVERAGE":
-            final_r1, final_r2, metadata = apply_low_short_coverage(r1, r2, final_prefix, seed)
-            if os.path.exists(r1):
-                os.remove(r1)
-            if os.path.exists(r2):
-                os.remove(r2)
-        elif error_type == "LOW_LONG_COVERAGE":
-            final_long, metadata = apply_low_long_coverage(long_reads, final_prefix, seed)
-            if os.path.exists(long_reads):
-                os.remove(long_reads)
-        elif error_type == "LONG_READ_QUALITY":
-            final_long, metadata = apply_long_read_quality(long_reads, final_prefix, seed)
-            if os.path.exists(long_reads):
-                os.remove(long_reads)
-        elif error_type == "CONTAMINATED":
-            contaminant_record = choose_contaminant(record, contaminant_records, seed)
-            if not contaminant_record:
-                logging.warning("No contaminant available for %s, leaving sample as NORMAL", public_name)
-            else:
-                final_r1, final_r2, final_long, metadata = apply_contamination(
-                    record,
-                    r1,
-                    r2,
-                    long_reads,
-                    contaminant_record,
-                    output_dir,
-                    final_prefix,
-                    seed,
-                )
-                for old_path in [r1, r2, long_reads]:
-                    if os.path.exists(old_path):
-                        os.remove(old_path)
-
-        expected_qc = "PASSED" if metadata["error_type"] == "NORMAL" else "FAILED"
-        answer_rows.append({
-            "public_name": public_name,
-            "species": species,
-            "reference_accession": record["accession"],
-            "tax_classification": species,
-            "assembler": "Unknown",
-            "qc": expected_qc,
-            "notes": metadata["notes"],
-            "error_type": metadata["error_type"],
-            "severity": metadata["severity"],
-        })
-        sample_rows.append({
-            "sample_name": public_name,
-            "reference_accession": record["accession"],
-            "species": species,
-            "tax_classification": "",
-            "r1": os.path.basename(final_r1),
-            "r2": os.path.basename(final_r2),
-            "long_reads": os.path.basename(final_long),
-            "assembler": "",
-            "qc": "",
-            "notes": "",
-        })
-        manifest_rows.append({
-            "sample_name": public_name,
-            "reference_accession": record["accession"],
-            "species": species,
-            "error_type": metadata["error_type"],
-            "severity": metadata["severity"],
-            "notes": metadata["notes"],
-            "short_read_count": count_reads(final_r1),
-            "long_read_count": count_reads(final_long),
-        })
+    answer_rows = [answer_row(context) for context in contexts]
+    sample_rows = [sample_sheet_row(context) for context in contexts]
+    manifest_rows = [manifest_row(context) for context in contexts]
 
     write_csv(
         os.path.join(output_dir, "answer_sheet.csv"),
@@ -360,7 +399,7 @@ def create_hybrid_dataset(
         ["sample_name", "reference_accession", "species", "error_type", "severity", "notes", "short_read_count", "long_read_count"],
     )
 
-    summary = Counter(plan for plan in error_plan)
+    summary = Counter(error_plan)
     with open(os.path.join(output_dir, "implant_manifest.json"), "w", encoding="utf-8") as handle:
         json.dump(
             {
@@ -373,4 +412,3 @@ def create_hybrid_dataset(
             indent=2,
         )
     cleanup_output_dir(output_dir)
-

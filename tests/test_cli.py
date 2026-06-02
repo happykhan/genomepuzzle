@@ -51,3 +51,21 @@ def test_parse_arguments_hybrid():
     assert args.mode == 'practice'
     assert args.output_dir == 'hybrid_output'
     assert args.random_seed == 321
+
+
+def test_parse_arguments_contamination():
+    test_args = [
+        'main.py', 'contamination', '--num_samples', '6', '--samplelist', 'samples.csv',
+        '--species', 'K. pneumoniae', '--type', 'Species',
+        '--output_dir', 'contam_output', '--random_seed', '9'
+    ]
+    sys.argv = test_args
+    args = parse_arguments()
+    assert args.command == 'contamination'
+    assert args.num_samples == 6
+    assert args.samplelist == 'samples.csv'
+    assert args.species == 'K. pneumoniae'
+    assert args.type == 'Species'
+    assert args.output_dir == 'contam_output'
+    assert args.random_seed == 9
+    assert args.assemble is False

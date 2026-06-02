@@ -16,6 +16,16 @@ def test_build_hybrid_error_plan_none():
     assert plan == ["NORMAL", "NORMAL", "NORMAL", "NORMAL"]
 
 
+def test_build_hybrid_error_plan_challenge_distribution():
+    plan = build_hybrid_error_plan(10, mode="challenge", random_seed=42)
+    assert len(plan) == 10
+    assert plan.count("CONTAMINATED") == 2
+    assert plan.count("LOW_SHORT_COVERAGE") == 2
+    assert plan.count("LOW_LONG_COVERAGE") == 2
+    assert plan.count("LONG_READ_QUALITY") == 2
+    assert plan.count("NORMAL") == 2
+
+
 def test_stable_public_name_reproducible():
     assert stable_public_name("GCF_000001.1", 42) == stable_public_name("GCF_000001.1", 42)
     assert stable_public_name("GCF_000001.1", 42) != stable_public_name("GCF_000001.1", 43)
