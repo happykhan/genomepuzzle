@@ -142,6 +142,67 @@ def summarize_hybrid_dataset(sample_sheet, dataset_dir=None):
     return summaries
 
 
+def _load_csv_rows(path):
+    with open(path, "r", encoding="utf-8") as handle:
+        return list(csv.DictReader(handle))
+
+
+def expected_flags_for_error(error_type):
+    mapping = {
+        "NORMAL": ["OK"],
+        "LOW_SHORT_COVERAGE": ["LOW_SHORT_READ_COUNT"],
+        "LOW_LONG_COVERAGE": ["LOW_LONG_READ_COUNT"],
+        "LONG_READ_QUALITY": [],
+        "CONTAMINATED": [],
+    }
+    return mapping.get(error_type, [])
+
+
+def compare_qc_to_manifest(qc_rows, manifest_path):
+    manifest_rows = _load_csv_rows(manifest_path)
+    qc_by_sample = {row["sample_name"]: row for row in qc_rows}
+    comparison_rows = []
+    for manifest_row in manifest_rows:
+        sample_name = manifest_row["sample_name"]
+        qc_row = qc_by_sample.get(sample_name)
+        if qc_row is None:
+            comparison_rows.append(
+                {
+                    "sample_name": sample_name,
+                    "error_type": manifest_row["error_type"],
+                    "expected_flags": "",
+                    "observed_flags": "MISSING_QC",
+                    "status": "missing_qc",
+                    "notes": "No QC summary row found for this sample",
+                }
+            )
+            continue
+        observed_flags = [
+            flag for flag in qc_row.get("flags", "").split(";") if flag and flag != "OK"
+        ]
+        expected_flags = expected_flags_for_error(manifest_row["error_type"])
+        if not expected_flags:
+            status = "not_assessed"
+            notes = "Current QC summary does not directly assess this implant type"
+        elif all(flag in observed_flags for flag in expected_flags):
+            status = "detected"
+            notes = "Observed QC flags match the expected implant signal"
+        else:
+            status = "missed"
+            notes = "Expected implant signal was not fully present in QC flags"
+        comparison_rows.append(
+            {
+                "sample_name": sample_name,
+                "error_type": manifest_row["error_type"],
+                "expected_flags": ";".join(expected_flags) or "N/A",
+                "observed_flags": qc_row.get("flags", "OK"),
+                "status": status,
+                "notes": notes,
+            }
+        )
+    return comparison_rows
+
+
 def write_qc_outputs(sample_rows, output_csv, output_json=None):
     fieldnames = [
         "sample_name",
@@ -168,3 +229,21 @@ def write_qc_outputs(sample_rows, output_csv, output_json=None):
     if output_json:
         with open(output_json, "w", encoding="utf-8") as handle:
             json.dump(sample_rows, handle, indent=2)
+
+
+def write_report_outputs(report_rows, output_csv, output_json=None):
+    fieldnames = [
+        "sample_name",
+        "error_type",
+        "expected_flags",
+        "observed_flags",
+        "status",
+        "notes",
+    ]
+    with open(output_csv, "w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(report_rows)
+    if output_json:
+        with open(output_json, "w", encoding="utf-8") as handle:
+            json.dump(report_rows, handle, indent=2)

@@ -11,9 +11,15 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from genomepuzzle.contamination import contamination_menu
 from genomepuzzle.create_error import introduce_errors
 from genomepuzzle.hybrid import create_hybrid_dataset
-from genomepuzzle.long_qc import summarize_hybrid_dataset, write_qc_outputs
+from genomepuzzle.long_qc import (
+    compare_qc_to_manifest,
+    summarize_hybrid_dataset,
+    write_qc_outputs,
+    write_report_outputs,
+)
 from genomepuzzle.rapid import rapid
 from genomepuzzle.simulate_reads import simulate_reads
+from genomepuzzle.slurm import build_hybrid_sbatch_script, submit_sbatch_script
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -216,6 +222,103 @@ if typer is not None:
         )
         sample_rows = summarize_hybrid_dataset(sample_sheet, dataset_dir=dataset_dir)
         write_qc_outputs(sample_rows, output_csv=output_csv, output_json=output_json)
+
+    @long_app.command("report")
+    def long_report_command(
+        sample_sheet: str = typer.Option(..., "--sample-sheet", help="Hybrid sample sheet."),
+        manifest: str = typer.Option(
+            ...,
+            "--manifest",
+            help="Hybrid implant_manifest.csv to compare against.",
+        ),
+        dataset_dir: str = typer.Option(
+            None,
+            help="Directory containing FASTQ files. Defaults to the sample sheet directory.",
+        ),
+        output_csv: str = typer.Option(
+            "hybrid_qc_report.csv",
+            help="Path to write the implant-vs-QC report CSV.",
+        ),
+        output_json: str = typer.Option(
+            None,
+            help="Optional path to also write the report as JSON.",
+        ),
+    ):
+        _print_run_summary(
+            "long report",
+            [
+                ("sample_sheet", sample_sheet),
+                ("manifest", manifest),
+                ("dataset_dir", dataset_dir or os.path.dirname(sample_sheet) or "."),
+                ("output_csv", output_csv),
+                ("output_json", output_json or "<none>"),
+            ],
+        )
+        qc_rows = summarize_hybrid_dataset(sample_sheet, dataset_dir=dataset_dir)
+        report_rows = compare_qc_to_manifest(qc_rows, manifest)
+        write_report_outputs(report_rows, output_csv=output_csv, output_json=output_json)
+
+    @long_app.command("hybrid-slurm")
+    def long_hybrid_slurm_command(
+        samplelist: str = typer.Option(
+            "datasets/rapid_data.csv", help="CSV file describing source assemblies."
+        ),
+        output_dir: str = typer.Option(
+            "hybrid_dataset", help="Directory to write the generated hybrid dataset."
+        ),
+        mode: str = typer.Option("challenge", help="Preset implant profile."),
+        contamination_list: str = typer.Option(
+            None, help="Optional CSV file of assemblies to use as contaminants."
+        ),
+        random_seed: int = typer.Option(42, help="Random seed for reproducibility."),
+        partition: str = typer.Option("short", help="Slurm partition."),
+        cpus_per_task: int = typer.Option(8, help="Slurm CPUs per task."),
+        mem_gb: int = typer.Option(32, help="Slurm memory in GB."),
+        time_limit: str = typer.Option("12:00:00", help="Slurm time limit."),
+        script_path: str = typer.Option(
+            None, help="Optional path to write the sbatch script."
+        ),
+        submit: bool = typer.Option(
+            True, help="Submit the job immediately after writing the script."
+        ),
+    ):
+        repo_dir = os.getcwd()
+        output_dir_abs = os.path.abspath(output_dir)
+        script_path = script_path or os.path.join(output_dir_abs, "run_hybrid.sbatch")
+        os.makedirs(output_dir_abs, exist_ok=True)
+        script_text = build_hybrid_sbatch_script(
+            samplelist=os.path.abspath(samplelist),
+            output_dir=output_dir_abs,
+            mode=mode,
+            contamination_list=os.path.abspath(contamination_list)
+            if contamination_list
+            else None,
+            random_seed=random_seed,
+            partition=partition,
+            cpus_per_task=cpus_per_task,
+            mem_gb=mem_gb,
+            time_limit=time_limit,
+            repo_dir=repo_dir,
+        )
+        with open(script_path, "w", encoding="utf-8") as handle:
+            handle.write(script_text)
+        _print_run_summary(
+            "long hybrid-slurm",
+            [
+                ("samplelist", samplelist),
+                ("output_dir", output_dir_abs),
+                ("mode", mode),
+                ("partition", partition),
+                ("cpus", cpus_per_task),
+                ("mem_gb", mem_gb),
+                ("time_limit", time_limit),
+                ("script_path", script_path),
+            ],
+        )
+        if submit:
+            job_id = submit_sbatch_script(script_path)
+            if console:
+                console.print("Submitted Slurm job: [bold]{0}[/bold]".format(job_id))
 
     @app.command("contamination")
     @short_app.command("contamination")

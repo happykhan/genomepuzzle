@@ -4,8 +4,10 @@ import json
 import os
 
 from genomepuzzle.long_qc import (
+    compare_qc_to_manifest,
     summarize_fastq,
     summarize_hybrid_dataset,
+    write_report_outputs,
     write_qc_outputs,
 )
 
@@ -119,3 +121,71 @@ def test_write_qc_outputs(tmp_path):
     write_qc_outputs(rows, str(output_csv), str(output_json))
     assert output_csv.exists()
     assert json.loads(output_json.read_text(encoding="utf-8"))[0]["sample_name"] == "sample1"
+
+
+def test_compare_qc_to_manifest(tmp_path):
+    manifest = tmp_path / "implant_manifest.csv"
+    with open(manifest, "w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "sample_name",
+                "reference_accession",
+                "species",
+                "error_type",
+                "severity",
+                "notes",
+                "short_read_count",
+                "long_read_count",
+            ],
+        )
+        writer.writeheader()
+        writer.writerow(
+            {
+                "sample_name": "sample1",
+                "reference_accession": "GCF_1",
+                "species": "Kp",
+                "error_type": "LOW_LONG_COVERAGE",
+                "severity": "0.15",
+                "notes": "",
+                "short_read_count": "10",
+                "long_read_count": "1",
+            }
+        )
+        writer.writerow(
+            {
+                "sample_name": "sample2",
+                "reference_accession": "GCF_2",
+                "species": "Kp",
+                "error_type": "CONTAMINATED",
+                "severity": "0.30",
+                "notes": "",
+                "short_read_count": "10",
+                "long_read_count": "10",
+            }
+        )
+    qc_rows = [
+        {"sample_name": "sample1", "flags": "LOW_LONG_READ_COUNT"},
+        {"sample_name": "sample2", "flags": "OK"},
+    ]
+    report = compare_qc_to_manifest(qc_rows, str(manifest))
+    assert report[0]["status"] == "detected"
+    assert report[1]["status"] == "not_assessed"
+
+
+def test_write_report_outputs(tmp_path):
+    rows = [
+        {
+            "sample_name": "sample1",
+            "error_type": "LOW_LONG_COVERAGE",
+            "expected_flags": "LOW_LONG_READ_COUNT",
+            "observed_flags": "LOW_LONG_READ_COUNT",
+            "status": "detected",
+            "notes": "Observed QC flags match the expected implant signal",
+        }
+    ]
+    output_csv = tmp_path / "report.csv"
+    output_json = tmp_path / "report.json"
+    write_report_outputs(rows, str(output_csv), str(output_json))
+    assert output_csv.exists()
+    assert json.loads(output_json.read_text(encoding="utf-8"))[0]["status"] == "detected"

@@ -8,6 +8,8 @@ error_models/
 fasterq* 
 work/
 ghru_output_dataset/
+generated/
+slurm-*.out
 .DS_Store
 .vscode/
 
