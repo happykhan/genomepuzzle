@@ -2,6 +2,7 @@ import os
 import pytest
 import subprocess
 from genomepuzzle.simulate_reads import run_art
+from genomepuzzle.runtime import resolve_tool
 
 def test_run_art(mocker):
     sample = {
@@ -20,15 +21,20 @@ def test_run_art(mocker):
 
     # Mock subprocess.run to avoid actually running the commands
     mocker.patch('subprocess.run')
+    mocker.patch('os.rename')
 
     # Run the function
     run_art(sample, output_dir, reference_genome, output_r1, output_r2)
 
     # Check that the correct commands were run
-    expected_command = f"bin/art_illumina -ss HS25 -i test_reference.fna -l 150 -f 50 -o {os.path.join(output_dir, 'sample1_R')} -p -m 200 -s 10 --rndSeed 42 -na"
-    subprocess.run.assert_any_call(expected_command, shell=True, check=True)
-    subprocess.run.assert_any_call(f"gzip -f {output_r1}", shell=True, check=True)
-    subprocess.run.assert_any_call(f"gzip -f {output_r2}", shell=True, check=True)
+    expected_command = [
+        resolve_tool('art_illumina'), '-ss', 'HS25', '-i', 'test_reference.fna',
+        '-l', '150', '-f', '50', '-o', os.path.join(output_dir, 'sample1_R'),
+        '-p', '-m', '200', '-s', '10', '--rndSeed', '42', '-na'
+    ]
+    subprocess.run.assert_any_call(expected_command, check=True)
+    subprocess.run.assert_any_call([resolve_tool('gzip'), '-f', output_r1], check=True)
+    subprocess.run.assert_any_call([resolve_tool('gzip'), '-f', output_r2], check=True)
 
 def test_run_art_invalid_command(mocker):
     sample = {

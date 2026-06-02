@@ -1,9 +1,8 @@
 import random
-import gzip
 import logging
 from genomepuzzle.sample.basic_sample import BasicSample
 import os
-import subprocess
+from genomepuzzle.runtime import seqtk_shift_quality
 
 
 class DegradedSample(BasicSample):
@@ -72,9 +71,4 @@ class DegradedSample(BasicSample):
         return self.modified_r1, self.modified_r2
 
     def _degrade_fastq_file(self, fastq_file, output_fastq, decrement, random_seed=42):
-        command = f"bin/seqtk seq -Q{decrement} {fastq_file} | gzip > {output_fastq}"
-        subprocess.run(
-            command,
-            shell=True,
-            check=True,
-        )
+        seqtk_shift_quality(fastq_file, output_fastq, decrement)

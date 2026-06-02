@@ -26,7 +26,14 @@ import os
 import shutil
 import gzip
 from genomepuzzle.simulate_reads import run_art, fetch_assembly, cleanup_output_dir
+from genomepuzzle.runtime import concatenate_files, seqtk_sample
 import subprocess
+
+
+def _open_fastq(path, mode):
+    if path.endswith(".gz"):
+        return gzip.open(path, mode)
+    return open(path, mode, encoding="utf-8")
 
 
 def degrade_quality(
@@ -45,7 +52,7 @@ def degrade_quality(
     if not 0 <= min_quality <= max_quality <= 93:  # Ensure valid Phred+33 range
         raise ValueError("Quality scores must be in range 0-93.")
 
-    with gzip.open(input_fastq, "rt") as infile, gzip.open(
+    with _open_fastq(input_fastq, "rt") as infile, _open_fastq(
         output_fastq, "wt"
     ) as outfile:
         while True:
@@ -92,8 +99,8 @@ def truncate_fastq(input_fastq, output_fastq, truncate_length=75):
     - truncate_length: int, length to truncate each read to.
     """
 
-    with open(input_fastq, "r", encoding="utf-8") as infile, open(
-        output_fastq, "w", encoding="utf-8"
+    with _open_fastq(input_fastq, "rt") as infile, _open_fastq(
+        output_fastq, "wt"
     ) as outfile:
         while True:
             # Read one complete FASTQ record (4 lines)
@@ -140,17 +147,9 @@ def subsample_paired_fastq(
     assert 0 < subsample_fraction <= 1, "Subsample fraction must be between 0 and 1."
     if seqtk:
         logging.info("Subsampling using seqtk (r1)...")
-        subprocess.run(
-            f"gunzip -c {input_r1} | bin/seqtk sample -s {random_seed} - {subsample_fraction} | gzip > {output_r1}",
-            shell=True,
-            check=True,
-        )
+        seqtk_sample(input_r1, output_r1, random_seed, subsample_fraction)
         logging.info("Subsampling using seqtk (r2)...")
-        subprocess.run(
-            f"gunzip -c {input_r2} | bin/seqtk sample -s {random_seed} - {subsample_fraction} | gzip > {output_r2}",
-            shell=True,
-            check=True,
-        )
+        seqtk_sample(input_r2, output_r2, random_seed, subsample_fraction)
     else:
         with gzip.open(input_r1, "rt") as r1, gzip.open(
             input_r2, "rt"
@@ -194,17 +193,9 @@ def subsample_paired_read_by_count(
     num_reads = max(1, int(num_reads))
     if seqtk:
         logging.info("Subsampling by count using seqtk (r1)...")
-        subprocess.run(
-            f"gunzip -c {input_r1} | bin/seqtk sample -s {random_seed} - {num_reads} | gzip > {output_r1}",
-            shell=True,
-            check=True,
-        )
+        seqtk_sample(input_r1, output_r1, random_seed, num_reads)
         logging.info("Subsampling by count using seqtk (r2)...")
-        subprocess.run(
-            f"gunzip -c {input_r2} | bin/seqtk sample -s {random_seed} - {num_reads} | gzip > {output_r2}",
-            shell=True,
-            check=True,
-        )
+        seqtk_sample(input_r2, output_r2, random_seed, num_reads)
     else:
         with gzip.open(input_r1, "rt") as r1, gzip.open(
             input_r2, "rt"
@@ -245,11 +236,7 @@ def subsample_single_fastq(
     assert 0 < subsample_fraction <= 1, "Subsample fraction must be between 0 and 1."
     if seqtk:
         logging.info("Subsampling single fastq using seqtk...")
-        subprocess.run(
-            f"gunzip -c {input_fastq} | bin/seqtk sample -s {random_seed} - {subsample_fraction} | gzip > {output_fastq}",
-            shell=True,
-            check=True,
-        )
+        seqtk_sample(input_fastq, output_fastq, random_seed, subsample_fraction)
     else:
         with gzip.open(input_fastq, "rt") as infile, gzip.open(
             output_fastq, "wt"
@@ -272,11 +259,7 @@ def subsample_single_fastq_by_count(
     num_reads = max(1, int(num_reads))
     if seqtk:
         logging.info("Subsampling single fastq by count using seqtk...")
-        subprocess.run(
-            f"gunzip -c {input_fastq} | bin/seqtk sample -s {random_seed} - {num_reads} | gzip > {output_fastq}",
-            shell=True,
-            check=True,
-        )
+        seqtk_sample(input_fastq, output_fastq, random_seed, num_reads)
     else:
         with gzip.open(input_fastq, "rt") as infile:
             records = []
@@ -295,11 +278,7 @@ def concatenate_fastqs(input_fastqs, output_fastq):
     """
     Concatenate gzipped FASTQ files into one output file.
     """
-    command = "cat {inputs} > {output}".format(
-        inputs=" ".join(input_fastqs),
-        output=output_fastq,
-    )
-    subprocess.run(command, shell=True, check=True)
+    concatenate_files(input_fastqs, output_fastq)
 
 
 def pass_through(r1_path, r2_path, r1_output, r2_output):
@@ -339,7 +318,7 @@ def get_contaminated_read_example(species_list, contamination_list_file):
     return contaminant_list
 
 
-def corrupt_read(sample, output_dir, random_seed=42):
+def corrupt_read(sample, output_dir=None, random_seed=42):
     """
     Corrupts a read file by writing a null byte at a random position.
 
@@ -354,7 +333,12 @@ def corrupt_read(sample, output_dir, random_seed=42):
         dict: The original sample dictionary.
     """
     random.seed(random_seed)
-    file_to_corrupt = os.path.join(output_dir, os.path.basename(sample["r1"]))
+    if isinstance(sample, dict):
+        if output_dir is None:
+            raise ValueError("output_dir is required when corrupting a sample dict")
+        file_to_corrupt = os.path.join(output_dir, os.path.basename(sample["r1"]))
+    else:
+        file_to_corrupt = sample
     with open(file_to_corrupt, "r+b") as f:
         f.seek(random.randint(0, os.path.getsize(file_to_corrupt) - 1))
         f.write(b"\x00")
@@ -372,7 +356,7 @@ def count_reads(fastq_file):
     - int, number of reads in the FASTQ file.
     """
     count = 0
-    with gzip.open(fastq_file, "rt") as f:
+    with _open_fastq(fastq_file, "rt") as f:
         for _ in f:
             count += 1
     return count // 4
@@ -406,19 +390,22 @@ def contamination(
     Returns:
     None
     """
-    fetch_assembly([contaminant_assembly], output_dir)
-    ass_dir = os.path.join(output_dir, "ncbi_dataset", "data")
-    ass_dir = [
-        os.path.join(ass_dir, x)
-        for x in os.listdir(ass_dir)
-        if x.startswith(contaminant_assembly)
-    ][0]
+    if os.path.exists(contaminant_assembly):
+        contaminant_assembly_path = contaminant_assembly
+    else:
+        fetch_assembly([contaminant_assembly], output_dir)
+        ass_dir = os.path.join(output_dir, "ncbi_dataset", "data")
+        ass_dir = [
+            os.path.join(ass_dir, x)
+            for x in os.listdir(ass_dir)
+            if x.startswith(contaminant_assembly)
+        ][0]
 
-    contaminant_assembly_path = [
-        os.path.join(ass_dir, x)
-        for x in os.listdir(ass_dir)
-        if x.startswith(contaminant_assembly)
-    ][0]
+        contaminant_assembly_path = [
+            os.path.join(ass_dir, x)
+            for x in os.listdir(ass_dir)
+            if x.startswith(contaminant_assembly)
+        ][0]
     # output_dir/ncbi_dataset/data/dataset_catalog.json
 
     sample = {
@@ -478,13 +465,11 @@ def contamination(
         random_seed=random_seed,
     )
     logging.info("Appending the contaminant reads to the output files - r1")
-    subprocess.run(
-        f"cat {subsample_contaminant_output_r1} >> {output_r1}", shell=True, check=True
-    )
+    concatenate_files([output_r1, subsample_contaminant_output_r1], output_r1 + ".tmp")
+    os.replace(output_r1 + ".tmp", output_r1)
     logging.info("Appending the contaminant reads to the output files - r2")
-    subprocess.run(
-        f"cat {subsample_contaminant_output_r2} >> {output_r2}", shell=True, check=True
-    )
+    concatenate_files([output_r2, subsample_contaminant_output_r2], output_r2 + ".tmp")
+    os.replace(output_r2 + ".tmp", output_r2)
     logging.info("Removing temporary files...")
     os.remove(contaminant_output_r1)
     os.remove(subsample_contaminant_output_r1)
@@ -518,134 +503,15 @@ def introduce_errors(
     error_proportion. The function also updates the sample sheet with details of
     the introduced errors and saves it to the output directory.
     """
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    random.seed(random_seed)
-    types_of_errors = [
-        "TRUNCATED",
-        "CORRUPT",
-        "CONTAMINATED",
-        "POOR_QUALITY",
-        "LOW_COVERAGE",
-    ]
+    from genomepuzzle.short_read import create_short_read_error_dataset
 
-    full_sample_list = []
-    with open(sample_sheet, "r", encoding="utf-8") as f:
-        full_sample_list = list(csv.DictReader(f))
-    # pick with samples to alter given the error_proportion
-    # get list of species in sample_sheet
-    species_list = set([sample["SPECIES"] for sample in full_sample_list])
-    contaminant_list = get_contaminated_read_example(
-        species_list, contamination_list_file
+    create_short_read_error_dataset(
+        sample_sheet=sample_sheet,
+        error_proportion=error_proportion,
+        contamination_list_file=contamination_list_file,
+        output_dir=output_dir,
+        random_seed=random_seed,
     )
-    if len(contaminant_list) == 0:
-        raise ValueError("No contaminants found in the contamination list.")
-    error_samples = random.sample(
-        full_sample_list, int(len(full_sample_list) * error_proportion)
-    )
-    for sample in error_samples:
-        if random.random() < 0.4:
-            sample["ERROR"] = "CONTAMINATED"
-        elif random.random() < 0.2:
-            sample["ERROR"] = "LOW_COVERAGE"
-        else:
-            sample["ERROR"] = random.choice(types_of_errors)
-        sample["QC"] = "FAILED"
-        sample["Notes"] = "Error introduced"
-    used_contaminants = []
-    for i, sample in enumerate(full_sample_list):
-        count = i+1
-        zfill_count = str(count).zfill(2)
-        sample['public_name'] = f"sample{zfill_count}"
-        input_dir = os.path.dirname(sample_sheet)
-        input_r1 = os.path.join(input_dir, os.path.basename(sample["r1"]))
-        input_r2 = os.path.join(input_dir, os.path.basename(sample["r2"]))
-        output_r1 = os.path.join(output_dir, sample['public_name'] + "_R1.fastq.gz")
-        output_r2 = os.path.join(output_dir, sample['public_name'] + "_R2.fastq.gz")
-        error_type = sample["ERROR"]
-        if error_type == "NONE":
-            pass_through(input_r1, input_r2, output_r1, output_r2)
-            sample["Notes"] = "No changes."
-        elif error_type == "TRUNCATED":
-            truncate_length = random.randint(5, 100)
-            file_to_truncate = input_r1
-            if random.choice([True, False]):
-                file_to_truncate = input_r1
-                sample["Notes"] = f"Truncated read 1 to {truncate_length} bp"
-            else:
-                sample["Notes"] = f"Truncated read 2 to {truncate_length} bp"
-                file_to_truncate = input_r2
-            truncate_fastq(file_to_truncate, output_dir, truncate_length)
-        elif error_type == "CORRUPT":
-            corruption = random.choice(["r1", "r2", "both"])
-            if corruption == "both":
-                corrupt_read(sample["r1"], output_dir)
-                corrupt_read(sample["r2"], output_dir)
-                sample["Notes"] = "Corrupted both reads"
-            elif corruption == "r1":
-                corrupt_read(sample["r1"], output_dir)
-                sample["Notes"] = "Corrupted read 1"
-            elif corruption == "r2":
-                corrupt_read(sample["r2"], output_dir)
-                sample["Notes"] = "Corrupted read 2"
-        elif error_type == "CONTAMINATED":
-            contaminant = random.choice(contaminant_list)
-            used_contaminants.append(contaminant)
-            contaminant_list.remove(contaminant)
-            if len(contaminant_list) == 0:
-                contaminant_list = used_contaminants
-            contaminant_assembly_file = contaminant["ASSEMBLY"]
-            percentage = random.randint(20, 80)
-            contamination(
-                input_r1,
-                input_r2,
-                output_r1,
-                output_r2,
-                contaminant_assembly_file,
-                output_dir,
-                percentage,
-                random_seed,
-            )
-            sample["Notes"] = (
-                f"Contaminated with {contaminant.get('SAMPLE_NAME')} at {percentage}%"
-            )
-        elif error_type == "POOR_QUALITY":
-            min_quality = random.randint(5, 9)
-            max_quality = random.randint(10, 20)
-            degrade_quality(
-                input_r1,
-                output_r1,
-                min_quality=min_quality,
-                max_quality=max_quality,
-                random_seed=random_seed,
-            )
-            degrade_quality(
-                input_r2,
-                output_r2,
-                min_quality=min_quality,
-                max_quality=max_quality,
-                random_seed=random_seed,
-            )
-            sample["Notes"] += f" Quality degraded to {min_quality}-{max_quality}"
-        elif error_type == "LOW_COVERAGE":
-            subsample_fraction = random.uniform(0.1, 0.4)
-            sample["Notes"] = f"Low coverage at {round(subsample_fraction, 2)}"
-            subsample_paired_fastq(
-                input_r1,
-                input_r2,
-                output_r1,
-                output_r2,
-                subsample_fraction,
-                random_seed=random_seed,
-            )
-        else:
-            logging.error("Error type %s not implemented", error_type)
-            raise ValueError(f"Error type {error_type} not implemented")
-        # write sample sheet
-        sample['r1'] = os.path.basename(output_r1)
-        sample['r2'] = os.path.basename(output_r2)
-    write_answer_sheet(output_dir, full_sample_list)
-    write_sample_sheet(output_dir, full_sample_list)
 
 def write_answer_sheet(output_dir, full_sample_list):
     sample_sheet = os.path.join(output_dir, "answer_sheet.csv")

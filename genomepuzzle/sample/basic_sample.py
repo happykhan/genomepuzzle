@@ -7,6 +7,8 @@ import random
 import gzip
 import time
 import hashlib
+import shutil
+from genomepuzzle.runtime import gzip_file, resolve_tool, run_command, seqtk_sample, unzip_archive
 
 class BasicSample:
     def __init__(
@@ -157,20 +159,25 @@ class BasicSample:
         if not os.path.exists(assembly_file_path):
             with tempfile.TemporaryDirectory() as output_dir:
                 time.sleep(3)
-                command = f"./bin/datasets download --api-key b82dffb754d98d8b7bec3b0639fb3bdd1c09 genome accession {self.assembly}"
-                subprocess.run(command, shell=True, check=True)
-                subprocess.run(f"mv ncbi_dataset.zip {output_dir}", shell=True, check=True)
+                api_key = os.environ.get("NCBI_DATASETS_API_KEY")
+                command = [resolve_tool("datasets"), "download", "genome", "accession", self.assembly]
+                if api_key:
+                    command = [
+                        resolve_tool("datasets"),
+                        "download",
+                        "--api-key",
+                        api_key,
+                        "genome",
+                        "accession",
+                        self.assembly,
+                    ]
+                run_command(command)
+                shutil.move("ncbi_dataset.zip", output_dir)
                 logging.info("Downloaded assembly files to %s", output_dir)
                 
                 # Unzip the downloaded file
                 try:
-                    subprocess.run(
-                        f"unzip -o {os.path.join(output_dir, 'ncbi_dataset.zip')} -d {output_dir}",
-                        shell=True,
-                        check=True,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
+                    unzip_archive(os.path.join(output_dir, "ncbi_dataset.zip"), output_dir)
                     logging.info("Unzipped assembly files in %s", output_dir)
                     # Get the assembly file
                     assembly_dir = [os.path.join(output_dir + "/ncbi_dataset/data", f) for f in os.listdir(output_dir + "/ncbi_dataset/data") if f.startswith(self.assembly) ][0]
@@ -181,9 +188,7 @@ class BasicSample:
                         if f.endswith(".fna") or f.endswith(".fasta")
                     ][0]
                     # Move assembly file to self.output_dir
-                    subprocess.run(
-                        f"mv {assembly_file} {assembly_file_path}", shell=True, check=True
-                    )
+                    shutil.move(assembly_file, assembly_file_path)
                     self.assembly_file = assembly_file_path
                 except subprocess.CalledProcessError as e:
                     logging.error("Failed to unzip assembly files: %s", e)
@@ -216,23 +221,37 @@ class BasicSample:
                 raise ValueError("Assembly file path not set")
             if not os.path.exists(self.assembly_file) or not os.path.isfile(self.assembly_file):
                 raise ValueError(f"Assembly file {self.assembly_file} does not exist or is not a file")
-            command = (
-                f"{self.bin_dir}/art_illumina -ss {self.platform} -i {self.assembly_file} "
-                f"-l {self.read_length} -f {self.coverage} "
-                f"-o {os.path.join(output_dir, f'{self.sample_name}_R')} "
-                f"-p -m {self.fragment_length} -s {self.standard_deviation} "
-                f"--rndSeed {self.random_seed} -na"
-            )
+            command = [
+                resolve_tool("art_illumina"),
+                "-ss",
+                str(self.platform),
+                "-i",
+                self.assembly_file,
+                "-l",
+                str(self.read_length),
+                "-f",
+                str(self.coverage),
+                "-o",
+                os.path.join(output_dir, f"{self.sample_name}_R"),
+                "-p",
+                "-m",
+                str(self.fragment_length),
+                "-s",
+                str(self.standard_deviation),
+                "--rndSeed",
+                str(self.random_seed),
+                "-na",
+            ]
             # rename the output files to the desired names
 
-            subprocess.run(command, shell=True, check=True)
+            run_command(command)
             logging.info("Running command: %s", command)
             # gzip output_r1
             logging.info("gzipping %s...", art_r1)
-            subprocess.run(f"pigz -f -p {num_threads} {art_r1}", shell=True, check=True)
+            gzip_file(art_r1, threads=num_threads)
             # gzip output_r2
             logging.info("gzipping %s...", art_r2)
-            subprocess.run(f"pigz -f -p {num_threads} {art_r2}", shell=True, check=True)
+            gzip_file(art_r2, threads=num_threads)
             # rename the files
             os.rename(art_r1 + ".gz", output_r1)
             os.rename(art_r2 + ".gz", output_r2)
@@ -246,14 +265,20 @@ class BasicSample:
         output_r1 = os.path.join(output_dir, f"{self.sample_name}_R1.fastq.gz")
         output_r2 = os.path.join(output_dir, f"{self.sample_name}_R2.fastq.gz")
         logging.info("Fetching reads for %s", self.sample_name)
-        command = f"{self.bin_dir}/fasterq-dump --outdir {output_dir} --split-files {self.short_reads}"
-        subprocess.run(command, shell=True, check=True)
+        command = [
+            resolve_tool("fasterq-dump"),
+            "--outdir",
+            output_dir,
+            "--split-files",
+            str(self.short_reads),
+        ]
+        run_command(command)
         logging.info("Downloaded reads for %s", self.sample_name)
 
         logging.info("gzipping %s...", fastqdump_output_r1)
-        subprocess.run(f"gzip -f {fastqdump_output_r1}", shell=True, check=True)
+        gzip_file(fastqdump_output_r1)
         logging.info("gzipping %s...", fastqdump_output_r2)
-        subprocess.run(f"gzip -f {fastqdump_output_r2}", shell=True, check=True)
+        gzip_file(fastqdump_output_r2)
         # rename the files
         os.rename(fastqdump_output_r1 + ".gz", output_r1)
         os.rename(fastqdump_output_r2 + ".gz", output_r2)
@@ -307,19 +332,10 @@ class BasicSample:
             Info: Logs the progress and completion of the subsampling process.
         """
  
-        random.seed(random_seed)
         logging.info("Subsampling by count using seqtk (r1)...")
-        subprocess.run(
-            f"gunzip -c {input_r1} | bin/seqtk sample -s {random_seed} - {num_reads} | gzip > {output_r1}",
-            shell=True,
-            check=True,
-        )
+        seqtk_sample(input_r1, output_r1, random_seed, num_reads)
         logging.info("Subsampling by count using seqtk (r2)...")
-        subprocess.run(
-            f"gunzip -c {input_r2} | bin/seqtk sample -s {random_seed} - {num_reads} | gzip > {output_r2}",
-            shell=True,
-            check=True,
-        )
+        seqtk_sample(input_r2, output_r2, random_seed, num_reads)
 
         logging.info("Subsampling by count complete. Output files saved as:")
         logging.info("  %s", output_r1)

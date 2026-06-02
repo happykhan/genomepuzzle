@@ -2,6 +2,7 @@ import os
 import pytest
 import shutil
 from genomepuzzle.simulate_reads import cleanup_output_dir, fetch_assembly
+from genomepuzzle.runtime import resolve_tool
 import subprocess
 from unittest.mock import patch, call
 
@@ -48,27 +49,28 @@ def test_cleanup_output_dir_no_files(setup_output_dir):
     assert not (output_dir / 'README.md').exists()
 
 @pytest.fixture
-def setup_output_dir(tmp_path):
+def setup_download_output_dir(tmp_path):
     output_dir = tmp_path / "output"
     output_dir.mkdir()
     return output_dir
 
-def test_fetch_assembly_download(setup_output_dir):
+def test_fetch_assembly_download(setup_download_output_dir):
     accessions = ["GCF_000001405.39", "GCF_000001635.27"]
-    output_dir = setup_output_dir
+    output_dir = setup_download_output_dir
 
     with patch("subprocess.run") as mock_run:
-        fetch_assembly(accessions, output_dir)
+        with patch("shutil.move") as mock_move:
+            fetch_assembly(accessions, output_dir)
         mock_run.assert_has_calls([
-            call("./bin/datasets download genome accession GCF_000001405.39 GCF_000001635.27", shell=True, check=True),
-            call(f"mv ncbi_dataset.zip {output_dir}", shell=True, check=True),
-            call(f"unzip -o {os.path.join(output_dir, 'ncbi_dataset.zip')} -d {output_dir}", shell=True, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            call([resolve_tool('datasets'), 'download', 'genome', 'accession', 'GCF_000001405.39', 'GCF_000001635.27'], check=True),
+            call(['unzip', '-o', os.path.join(output_dir, 'ncbi_dataset.zip'), '-d', output_dir], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         ])
+        mock_move.assert_called_once_with("ncbi_dataset.zip", output_dir)
 
-def test_fetch_assembly_already_downloaded(setup_output_dir):
-    output_dir = setup_output_dir
+def test_fetch_assembly_already_downloaded(setup_download_output_dir):
+    output_dir = setup_download_output_dir
     (output_dir / "ncbi_dataset.zip").touch()
 
     with patch("subprocess.run") as mock_run:
         fetch_assembly(["GCF_000001405.39"], output_dir)
-        mock_run.assert_called_once_with(f"unzip -o {os.path.join(output_dir, 'ncbi_dataset.zip')} -d {output_dir}", shell=True, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        mock_run.assert_called_once_with(['unzip', '-o', os.path.join(output_dir, 'ncbi_dataset.zip'), '-d', output_dir], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

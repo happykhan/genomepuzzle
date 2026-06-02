@@ -10,6 +10,7 @@ import csv
 import random
 import shutil
 import hashlib
+import warnings
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from genomepuzzle.sample.kleborate_sample import KleborateSample
@@ -382,5 +383,9 @@ def parse_arguments():
 
 
 if __name__ == "__main__":
+    warnings.warn(
+        "eqa-test.py is deprecated. Prefer the Typer CLI via `pixi run genomepuzzle`.",
+        DeprecationWarning,
+    )
     args = parse_arguments()
     generate_dataset(args.samplelist, args.species, args.output_dir, args.random_seed)

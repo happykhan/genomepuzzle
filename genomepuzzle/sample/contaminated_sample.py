@@ -4,9 +4,9 @@ create reads contaminated with some other sample.
 """
 import logging
 import os
-import subprocess
 import random
 from genomepuzzle.sample.basic_sample import BasicSample
+from genomepuzzle.runtime import concatenate_files
 
 class ContaminatedSample(BasicSample):
     """
@@ -140,16 +140,14 @@ class ContaminatedSample(BasicSample):
 
             # concatenate the subsampled reads
             logging.info("Appending the contaminant reads to the output files - r1")
-            subprocess.run(
-                f"cat {subsample_contaminant_output_r1} {subsample_output_r1} >> {self.modified_r1}",
-                shell=True,
-                check=True,
+            concatenate_files(
+                [subsample_contaminant_output_r1, subsample_output_r1],
+                self.modified_r1,
             )
             logging.info("Appending the contaminant reads to the output files - r2")
-            subprocess.run(
-                f"cat {subsample_contaminant_output_r2} {subsample_output_r2} >> {self.modified_r2}",
-                shell=True,
-                check=True,
+            concatenate_files(
+                [subsample_contaminant_output_r2, subsample_output_r2],
+                self.modified_r2,
             )
             read_subsample_count = self.count_reads(self.modified_r1)
             logging.info("Number of reads in final output: %d", read_subsample_count)

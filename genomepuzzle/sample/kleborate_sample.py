@@ -3,6 +3,7 @@ import os
 import logging
 import subprocess
 import csv
+from genomepuzzle.runtime import require_tool
 
 class KleborateSample(BasicSample):
 
@@ -48,12 +49,23 @@ class KleborateSample(BasicSample):
         if not os.path.exists(kleboutput):
             logging.info("Running kleborate for %s", self.sample_name)
             # Run kleborate with docker
-            command = (
-                f"docker run --rm -v {os.path.abspath(self.work_dir)}:/data "
-                f"quay.io/biocontainers/kleborate:3.1.3--pyhdfd78af_0 kleborate -a /data/{os.path.basename(self.assembly_file)} "
-                f"-o /data/{self.sample_name}_kleborate_output -p kpsc"
-            )
-            subprocess.run(command, shell=True, check=True)
+            require_tool("docker")
+            command = [
+                "docker",
+                "run",
+                "--rm",
+                "-v",
+                f"{os.path.abspath(self.work_dir)}:/data",
+                "quay.io/biocontainers/kleborate:3.1.3--pyhdfd78af_0",
+                "kleborate",
+                "-a",
+                f"/data/{os.path.basename(self.assembly_file)}",
+                "-o",
+                f"/data/{self.sample_name}_kleborate_output",
+                "-p",
+                "kpsc",
+            ]
+            subprocess.run(command, check=True)
             logging.info("Kleborate analysis complete. Output saved to %s", kleboutput)
         self.analysis_results = kleboutput
 

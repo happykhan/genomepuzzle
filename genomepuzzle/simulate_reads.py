@@ -2,9 +2,11 @@ import logging
 import os
 import csv
 import subprocess
+import shutil
 import random
 from genomepuzzle.util import check_input_table
 from genomepuzzle.util import check_operating_system
+from genomepuzzle.runtime import gzip_file, resolve_tool, run_command, unzip_archive
 
 
 def cleanup_output_dir(output_dir):
@@ -24,10 +26,12 @@ def cleanup_output_dir(output_dir):
         - Information about the cleanup process, including which files and directories were removed.
     """
     logging.info("Cleaning up output directory %s", output_dir)
-    os.remove(os.path.join(output_dir, "ncbi_dataset.zip"))
+    zip_path = os.path.join(output_dir, "ncbi_dataset.zip")
+    if os.path.exists(zip_path):
+        os.remove(zip_path)
     ncbi_dataset_dir = os.path.join(output_dir, "ncbi_dataset")
     if os.path.exists(ncbi_dataset_dir):
-        subprocess.run(f"rm -rf {ncbi_dataset_dir}", shell=True, check=True)
+        shutil.rmtree(ncbi_dataset_dir)
         logging.info("Removed directory %s", ncbi_dataset_dir)
     # remove md5sum.txt if it exists
     md5sum_file = os.path.join(output_dir, "md5sum.txt")
@@ -59,23 +63,17 @@ def fetch_assembly(accessions, output_dir):
     if not os.path.exists(output_dir):
         os.mkdir(output_dir)
     if "ncbi_dataset.zip" not in os.listdir(output_dir):
-        accessions = " ".join(accessions)
-        command = f"./bin/datasets download genome accession {accessions}"
-        subprocess.run(command, shell=True, check=True)
+        command = [resolve_tool("datasets"), "download", "genome", "accession"]
+        command.extend(accessions)
+        run_command(command)
         # Move the downloaded file to the output directory
-        subprocess.run(f"mv ncbi_dataset.zip {output_dir}", shell=True, check=True)
+        shutil.move("ncbi_dataset.zip", output_dir)
         logging.info("Downloaded assembly files to %s", output_dir)
     else:
         logging.info("Assembly files already downloaded in %s", output_dir)
     # Unzip the downloaded file
     try:
-        subprocess.run(
-            f"unzip -o {os.path.join(output_dir, 'ncbi_dataset.zip')} -d {output_dir}",
-            shell=True,
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        unzip_archive(os.path.join(output_dir, "ncbi_dataset.zip"), output_dir)
     except subprocess.CalledProcessError as e:
         logging.error("Failed to unzip assembly files: %s", e)
     logging.info("Unzipped assembly files in %s", output_dir)
@@ -105,23 +103,37 @@ def run_art(sample, output_dir, reference_genome, output_r1, output_r2):
     art_r1 = os.path.join(output_dir, f"{sample['public_name']}_R1.fq")
     art_r2 = os.path.join(output_dir, f"{sample['public_name']}_R2.fq")
     output_prefix = os.path.join(output_dir, "{name}_R".format(name=sample["public_name"]))
-    command = (
-        f"bin/art_illumina -ss {sample['platform']} -i {reference_genome} "
-        f"-l {sample['read_length']} -f {sample['coverage']} "
-        f"-o {output_prefix} "
-        f"-p -m {sample['fragment_length']} -s {sample['standard_deviation']} "
-        f"--rndSeed {sample['random_seed']} -na"
-    )
+    command = [
+        resolve_tool("art_illumina"),
+        "-ss",
+        str(sample["platform"]),
+        "-i",
+        reference_genome,
+        "-l",
+        str(sample["read_length"]),
+        "-f",
+        str(sample["coverage"]),
+        "-o",
+        output_prefix,
+        "-p",
+        "-m",
+        str(sample["fragment_length"]),
+        "-s",
+        str(sample["standard_deviation"]),
+        "--rndSeed",
+        str(sample["random_seed"]),
+        "-na",
+    ]
     # rename the output files to the desired names
 
-    subprocess.run(command, shell=True, check=True)
+    run_command(command)
     logging.info("Running command: %s", command)
     # gzip output_r1
     logging.info("gzipping %s...", art_r1)
-    subprocess.run(f"gzip -f {art_r1}", shell=True, check=True)
+    gzip_file(art_r1)
     # gzip output_r2
     logging.info("gzipping %s...", art_r2)
-    subprocess.run(f"gzip -f {art_r2}", shell=True, check=True)
+    gzip_file(art_r2)
     # rename the files
     os.rename(art_r1 + ".gz", output_r1)
     os.rename(art_r2 + ".gz", output_r2)
@@ -149,16 +161,20 @@ def download_reads(sample, output_dir, output_r1, output_r2):
     fastqdump_output_r1 = os.path.join(output_dir, f"{sample['SHORT_READS']}_1.fastq")
     fastqdump_output_r2 = os.path.join(output_dir, f"{sample['SHORT_READS']}_2.fastq")
     logging.info("Fetching reads for %s", sample["SAMPLE_NAME"])
-    command = (
-        f"bin/fasterq-dump --outdir {output_dir} --split-files {sample['SHORT_READS']}"
-    )
-    subprocess.run(command, shell=True, check=True)
+    command = [
+        resolve_tool("fasterq-dump"),
+        "--outdir",
+        output_dir,
+        "--split-files",
+        str(sample["SHORT_READS"]),
+    ]
+    run_command(command)
     logging.info("Downloaded reads for %s", sample["SAMPLE_NAME"])
 
     logging.info("gzipping %s...", fastqdump_output_r1)
-    subprocess.run(f"gzip -f {fastqdump_output_r1}", shell=True, check=True)
+    gzip_file(fastqdump_output_r1)
     logging.info("gzipping %s...", fastqdump_output_r2)
-    subprocess.run(f"gzip -f {fastqdump_output_r2}", shell=True, check=True)
+    gzip_file(fastqdump_output_r2)
     # rename the files
     os.rename(fastqdump_output_r1 + ".gz", output_r1)
     os.rename(fastqdump_output_r2 + ".gz", output_r2)
