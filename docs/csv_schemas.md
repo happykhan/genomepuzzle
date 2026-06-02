@@ -147,3 +147,25 @@ Columns:
 - `notes`
 - `short_read_count`
 - `long_read_count`
+
+## Long QC summary `long_qc_summary.csv`
+
+Produced by `long qc`.
+
+Columns:
+- `sample_name`
+- `species`
+- `reference_accession`
+- `r1`
+- `r2`
+- `long_reads`
+- `short_read_count`
+- `short_total_bases`
+- `short_mean_read_length`
+- `short_mean_quality`
+- `long_read_count`
+- `long_total_bases`
+- `long_mean_read_length`
+- `long_mean_quality`
+- `long_n50_length`
+- `flags`

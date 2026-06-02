@@ -11,6 +11,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from genomepuzzle.contamination import contamination_menu
 from genomepuzzle.create_error import introduce_errors
 from genomepuzzle.hybrid import create_hybrid_dataset
+from genomepuzzle.long_qc import summarize_hybrid_dataset, write_qc_outputs
 from genomepuzzle.rapid import rapid
 from genomepuzzle.simulate_reads import simulate_reads
 
@@ -183,6 +184,38 @@ if typer is not None:
             mode=mode,
             random_seed=random_seed,
         )
+
+    @long_app.command("qc")
+    def long_qc_command(
+        sample_sheet: str = typer.Option(
+            ...,
+            "--sample-sheet",
+            help="Hybrid sample sheet to summarize.",
+        ),
+        dataset_dir: str = typer.Option(
+            None,
+            help="Directory containing the FASTQ files. Defaults to the sample sheet directory.",
+        ),
+        output_csv: str = typer.Option(
+            "long_qc_summary.csv",
+            help="Path to write the QC summary CSV.",
+        ),
+        output_json: str = typer.Option(
+            None,
+            help="Optional path to also write the QC summary as JSON.",
+        ),
+    ):
+        _print_run_summary(
+            "long qc",
+            [
+                ("sample_sheet", sample_sheet),
+                ("dataset_dir", dataset_dir or os.path.dirname(sample_sheet) or "."),
+                ("output_csv", output_csv),
+                ("output_json", output_json or "<none>"),
+            ],
+        )
+        sample_rows = summarize_hybrid_dataset(sample_sheet, dataset_dir=dataset_dir)
+        write_qc_outputs(sample_rows, output_csv=output_csv, output_json=output_json)
 
     @app.command("contamination")
     @short_app.command("contamination")
