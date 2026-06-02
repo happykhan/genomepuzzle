@@ -53,10 +53,9 @@ class TruncatedSample(BasicSample):
             (self.r1, self.modified_r1),
             (self.r2, self.modified_r2),
         ]:
-            with (
-                gzip.open(input_fastq, "rt") as infile,
-                gzip.open(output_fastq, "wt") as outfile,
-            ):
+            with gzip.open(input_fastq, "rt") as infile, gzip.open(
+                output_fastq, "wt"
+            ) as outfile:
                 while True:
                     # Read one complete FASTQ record (4 lines)
                     header = infile.readline().strip()  # Line 1: Sequence ID

@@ -10,7 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from genomepuzzle.create_error import introduce_errors
 from genomepuzzle.simulate_reads import simulate_reads
 from genomepuzzle.rapid import rapid
-from genomepuzzle.contamination import contamination_menu
+from genomepuzzle.hybrid import create_hybrid_dataset
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -137,6 +137,46 @@ def parse_arguments():
             args.samplelist,
         )
     )
+    hybrid_parser = subparsers.add_parser(
+        "hybrid", help="Generate hybrid assembly datasets with implanted errors"
+    )
+    hybrid_parser.add_argument(
+        "--samplelist",
+        type=str,
+        help="List of assemblies to use",
+        default="rapid_data.csv",
+    )
+    hybrid_parser.add_argument(
+        "--contamination_list",
+        type=str,
+        help="Optional list of assemblies to use as contamination sources",
+        default=None,
+    )
+    hybrid_parser.add_argument(
+        "--mode",
+        type=str,
+        choices=["practice", "challenge", "none"],
+        help="Preset hybrid implant profile",
+        default="challenge",
+    )
+    hybrid_parser.add_argument(
+        "--output_dir",
+        type=str,
+        help="Directory to save the generated hybrid dataset",
+        default="hybrid_dataset",
+    )
+    hybrid_parser.add_argument(
+        "--random_seed", type=int, help="Random seed for reproducibility", default=42
+    )
+    hybrid_parser.set_defaults(
+        func=lambda args: create_hybrid_dataset(
+            output_dir=args.output_dir,
+            samplelist=args.samplelist,
+            contamination_list=args.contamination_list,
+            mode=args.mode,
+            random_seed=args.random_seed,
+        )
+    )
     contaimination_parser = subparsers.add_parser("contamination", help="Generate contamination samples")
     contaimination_parser.add_argument(
         "--num_samples", type=int, help="Number of samples to generate", default=10
@@ -175,7 +215,9 @@ def parse_arguments():
         help="Flag to indicate if the samples should be assembled",
     )
     contaimination_parser.set_defaults(
-        func=lambda args: contamination_menu(
+        func=lambda args: __import__(
+            "genomepuzzle.contamination", fromlist=["contamination_menu"]
+        ).contamination_menu(
             args.num_samples,
             args.samplelist,
             args.species,

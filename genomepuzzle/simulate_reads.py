@@ -104,10 +104,11 @@ def run_art(sample, output_dir, reference_genome, output_r1, output_r2):
     """
     art_r1 = os.path.join(output_dir, f"{sample['public_name']}_R1.fq")
     art_r2 = os.path.join(output_dir, f"{sample['public_name']}_R2.fq")
+    output_prefix = os.path.join(output_dir, "{name}_R".format(name=sample["public_name"]))
     command = (
         f"bin/art_illumina -ss {sample['platform']} -i {reference_genome} "
         f"-l {sample['read_length']} -f {sample['coverage']} "
-        f"-o {os.path.join(output_dir, f'{sample['public_name']}_R')} "
+        f"-o {output_prefix} "
         f"-p -m {sample['fragment_length']} -s {sample['standard_deviation']} "
         f"--rndSeed {sample['random_seed']} -na"
     )

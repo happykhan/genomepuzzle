@@ -45,10 +45,9 @@ def degrade_quality(
     if not 0 <= min_quality <= max_quality <= 93:  # Ensure valid Phred+33 range
         raise ValueError("Quality scores must be in range 0-93.")
 
-    with (
-        gzip.open(input_fastq, "rt") as infile,
-        gzip.open(output_fastq, "wt") as outfile,
-    ):
+    with gzip.open(input_fastq, "rt") as infile, gzip.open(
+        output_fastq, "wt"
+    ) as outfile:
         while True:
             # Read one FASTQ record (4 lines)
             header = infile.readline().strip()  # Line 1: Sequence ID
@@ -93,10 +92,9 @@ def truncate_fastq(input_fastq, output_fastq, truncate_length=75):
     - truncate_length: int, length to truncate each read to.
     """
 
-    with (
-        open(input_fastq, "r", encoding="utf-8") as infile,
-        open(output_fastq, "w", encoding="utf-8") as outfile,
-    ):
+    with open(input_fastq, "r", encoding="utf-8") as infile, open(
+        output_fastq, "w", encoding="utf-8"
+    ) as outfile:
         while True:
             # Read one complete FASTQ record (4 lines)
             header = infile.readline().strip()  # Line 1: Sequence ID
@@ -154,12 +152,11 @@ def subsample_paired_fastq(
             check=True,
         )
     else:
-        with (
-            gzip.open(input_r1, "rt") as r1,
-            gzip.open(input_r2, "rt") as r2,
-            gzip.open(output_r1, "wt") as out_r1,
-            gzip.open(output_r2, "wt") as out_r2,
-        ):
+        with gzip.open(input_r1, "rt") as r1, gzip.open(
+            input_r2, "rt"
+        ) as r2, gzip.open(output_r1, "wt") as out_r1, gzip.open(
+            output_r2, "wt"
+        ) as out_r2:
             while True:
                 # Read 4 lines for R1 (one full FASTQ record)
                 r1_record = [r1.readline().strip() for _ in range(4)]
@@ -208,12 +205,11 @@ def subsample_paired_read_by_count(
             check=True,
         )
     else:
-        with (
-            gzip.open(input_r1, "rt") as r1,
-            gzip.open(input_r2, "rt") as r2,
-            gzip.open(output_r1, "wt") as out_r1,
-            gzip.open(output_r2, "wt") as out_r2,
-        ):
+        with gzip.open(input_r1, "rt") as r1, gzip.open(
+            input_r2, "rt"
+        ) as r2, gzip.open(output_r1, "wt") as out_r1, gzip.open(
+            output_r2, "wt"
+        ) as out_r2:
             reads_r1 = []
             reads_r2 = []
 
@@ -236,6 +232,72 @@ def subsample_paired_read_by_count(
     logging.info("Subsampling by count complete. Output files saved as:")
     logging.info("  %s", output_r1)
     logging.info("  %s", output_r2)
+
+
+def subsample_single_fastq(
+    input_fastq, output_fastq, subsample_fraction=0.1, random_seed=42, seqtk=True
+):
+    """
+    Subsample a single FASTQ file by fraction.
+    """
+    random.seed(random_seed)
+    assert 0 < subsample_fraction <= 1, "Subsample fraction must be between 0 and 1."
+    if seqtk:
+        logging.info("Subsampling single fastq using seqtk...")
+        subprocess.run(
+            f"gunzip -c {input_fastq} | bin/seqtk sample -s {random_seed} - {subsample_fraction} | gzip > {output_fastq}",
+            shell=True,
+            check=True,
+        )
+    else:
+        with gzip.open(input_fastq, "rt") as infile, gzip.open(
+            output_fastq, "wt"
+        ) as outfile:
+            while True:
+                record = [infile.readline().strip() for _ in range(4)]
+                if not record[0]:
+                    break
+                if random.random() < subsample_fraction:
+                    outfile.write("\n".join(record) + "\n")
+
+
+def subsample_single_fastq_by_count(
+    input_fastq, output_fastq, num_reads=1000, random_seed=42, seqtk=True
+):
+    """
+    Subsample a single FASTQ file by read count.
+    """
+    random.seed(random_seed)
+    if seqtk:
+        logging.info("Subsampling single fastq by count using seqtk...")
+        subprocess.run(
+            f"gunzip -c {input_fastq} | bin/seqtk sample -s {random_seed} - {num_reads} | gzip > {output_fastq}",
+            shell=True,
+            check=True,
+        )
+    else:
+        with gzip.open(input_fastq, "rt") as infile:
+            records = []
+            while True:
+                record = [infile.readline().strip() for _ in range(4)]
+                if not record[0]:
+                    break
+                records.append(record)
+        selected_indices = random.sample(range(len(records)), int(num_reads))
+        with gzip.open(output_fastq, "wt") as outfile:
+            for idx in selected_indices:
+                outfile.write("\n".join(records[idx]) + "\n")
+
+
+def concatenate_fastqs(input_fastqs, output_fastq):
+    """
+    Concatenate gzipped FASTQ files into one output file.
+    """
+    command = "cat {inputs} > {output}".format(
+        inputs=" ".join(input_fastqs),
+        output=output_fastq,
+    )
+    subprocess.run(command, shell=True, check=True)
 
 
 def pass_through(r1_path, r2_path, r1_output, r2_output):

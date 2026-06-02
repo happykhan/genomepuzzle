@@ -1,6 +1,5 @@
 import pytest
 import sys
-from io import StringIO
 from genomepuzzle.main import parse_arguments
 
 def test_parse_arguments_simulate():
@@ -34,5 +33,21 @@ def test_parse_arguments_errors():
 def test_parse_arguments_no_command():
     test_args = ['main.py']
     sys.argv = test_args
-    with pytest.raises(SystemExit):
-        parse_arguments()
+    args = parse_arguments()
+    assert args.command is None
+
+
+def test_parse_arguments_hybrid():
+    test_args = [
+        'main.py', 'hybrid', '--samplelist', 'hybrid.csv',
+        '--contamination_list', 'contaminants.csv', '--mode', 'practice',
+        '--output_dir', 'hybrid_output', '--random_seed', '321'
+    ]
+    sys.argv = test_args
+    args = parse_arguments()
+    assert args.command == 'hybrid'
+    assert args.samplelist == 'hybrid.csv'
+    assert args.contamination_list == 'contaminants.csv'
+    assert args.mode == 'practice'
+    assert args.output_dir == 'hybrid_output'
+    assert args.random_seed == 321
