@@ -17,6 +17,9 @@ sra-tools = "*"
 ncbi-datasets-cli = "*"
 pigz = "*"
 unzip = "*"
+badread = "*"
+flye = "*"
+spades = "*"
 
 [tasks]
 genomepuzzle = "python -m genomepuzzle.main"
