@@ -17,7 +17,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Iterable
 
-from genomepuzzle.contract import json_dump, utc_now
+from genomepuzzle.contract import json_dump, sha256_file, utc_now
 from genomepuzzle.runtime import require_tool
 
 
@@ -250,6 +250,14 @@ def calibrate_release(
         )
 
     report_path = output / "report.json"
+    repository = Path(__file__).resolve().parents[1]
+    git_commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repository,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
     json_dump(
         report_path,
         {
@@ -257,6 +265,8 @@ def calibrate_release(
             "release_id": manifest["release_id"],
             "exercise": exercise,
             "slurm_job_id": os.environ["SLURM_JOB_ID"],
+            "git_commit": git_commit,
+            "pixi_lock_sha256": sha256_file(repository / "pixi.lock"),
             "completed_at": utc_now(),
             "commands": commands,
             "samples": sample_reports,
