@@ -235,7 +235,15 @@ def calibrate_release(
             ]
             if "long_reads" in paths:
                 command.extend(["--nanopore", str(paths["long_reads"])])
-            _run(command, commands)
+            try:
+                _run(command, commands)
+            except subprocess.CalledProcessError as exc:
+                report["assembly_error"] = {
+                    "return_code": exc.returncode,
+                    "command": shlex.join(str(value) for value in exc.cmd),
+                }
+                sample_reports.append(report)
+                continue
             contig_path = assembly_dir / "contigs.fasta"
             report["assembly_metrics"] = fasta_metrics(contig_path)
             report["assembly"] = str(contig_path.relative_to(root))
