@@ -16,7 +16,7 @@ Last updated: 2026-07-23
 - [x] Integrate final short-read assets with release packages.
 - [x] Integrate final hybrid assets with release packages.
 - [x] Add pinned external-tool integration through Pixi.
-- [ ] Complete scientific calibration runs for every exercise.
+- [x] Complete scientific calibration runs for every exercise.
 
 ## Purpose
 

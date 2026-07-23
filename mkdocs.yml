@@ -61,6 +61,7 @@ nav:
       - Participant CSV fields: csv_schemas.md
   - Operate releases:
       - SLURM workflow: operations/slurm.md
+      - Pilot calibration: operations/pilot-calibration.md
       - Release-building reference: release-building.md
       - Validate and publish: operations/validation.md
       - Troubleshooting: operations/troubleshooting.md
