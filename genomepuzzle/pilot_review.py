@@ -120,6 +120,22 @@ def _load_release(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     return manifest, provenance
 
 
+def stage_named_assemblies(
+    output_dir: str | os.PathLike[str],
+    assemblies: Iterable[tuple[str, str]],
+) -> list[str]:
+    """Copy generic assembler outputs to stable, sample-labelled paths."""
+
+    destination = Path(output_dir)
+    destination.mkdir(parents=True, exist_ok=True)
+    staged: list[str] = []
+    for sample_id, assembly in assemblies:
+        target = destination / "{0}.fasta".format(sample_id)
+        shutil.copyfile(assembly, target)
+        staged.append(str(target))
+    return staged
+
+
 def calibrate_release(
     release_dir: str | os.PathLike[str],
     *,
@@ -253,6 +269,7 @@ def calibrate_release(
             contigs.append((sample_id, str(contig_path)))
         sample_reports.append(report)
 
+    analysis_inputs = stage_named_assemblies(output / "analysis-inputs", contigs)
     kleborate_output = output / "kleborate"
     if kleborate_output.exists():
         shutil.rmtree(kleborate_output)
@@ -260,7 +277,7 @@ def calibrate_release(
         [
             require_tool("kleborate"),
             "-a",
-            *(path for _, path in contigs),
+            *analysis_inputs,
             "-o",
             str(kleborate_output),
             "-p",
@@ -270,13 +287,6 @@ def calibrate_release(
     )
     tree_path: Path | None = None
     if exercise == "outbreak":
-        tree_inputs = output / "tree-inputs"
-        tree_inputs.mkdir(exist_ok=True)
-        unique_contigs = []
-        for sample_id, contig in contigs:
-            unique_path = tree_inputs / "{0}.fasta".format(sample_id)
-            shutil.copyfile(contig, unique_path)
-            unique_contigs.append(str(unique_path))
         tree_path = output / "mashtree.dnd"
         _run(
             [
@@ -285,7 +295,7 @@ def calibrate_release(
                 str(threads),
                 "--outtree",
                 str(tree_path),
-                *unique_contigs,
+                *analysis_inputs,
             ],
             commands,
         )

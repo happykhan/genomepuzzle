@@ -1,8 +1,13 @@
 import gzip
+from pathlib import Path
 
 import pytest
 
-from genomepuzzle.pilot_review import fasta_metrics, fastq_metrics
+from genomepuzzle.pilot_review import (
+    fasta_metrics,
+    fastq_metrics,
+    stage_named_assemblies,
+)
 
 
 def test_fastq_metrics_streams_read_statistics(tmp_path):
@@ -41,3 +46,25 @@ def test_fasta_metrics_reports_n50(tmp_path):
         "ambiguous_bases": 2,
         "ambiguous_fraction": 0.18181818,
     }
+
+
+def test_stage_named_assemblies_preserves_sample_identity(tmp_path):
+    first = tmp_path / "one" / "contigs.fasta"
+    second = tmp_path / "two" / "contigs.fasta"
+    first.parent.mkdir()
+    second.parent.mkdir()
+    first.write_text(">one\nAAAA\n", encoding="ascii")
+    second.write_text(">two\nCCCC\n", encoding="ascii")
+
+    staged = stage_named_assemblies(
+        tmp_path / "analysis-inputs",
+        [("Sample_A", str(first)), ("Sample_B", str(second))],
+    )
+
+    assert [Path(path) for path in staged] == [
+        tmp_path / "analysis-inputs" / "Sample_A.fasta",
+        tmp_path / "analysis-inputs" / "Sample_B.fasta",
+    ]
+    assert (tmp_path / "analysis-inputs" / "Sample_A.fasta").read_text() == (
+        ">one\nAAAA\n"
+    )
