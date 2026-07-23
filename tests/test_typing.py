@@ -84,7 +84,10 @@ def test_build_typing_release_is_anonymous_and_tracks_truth(tmp_path):
         release_dir / "public/files/Sample_fragmented.fasta"
     )
     assert all(name.startswith("Sample_clean_contig_") for name, _ in clean_records)
-    assert sum(len(seq) for _, seq in mixed_records) == 350
+    assert sum(len(seq) for _, seq in mixed_records) == 312
+    mixed_validation = private["samples"][1]["provenance"]["validation"]
+    assert mixed_validation["contaminant_bases"] == 62
+    assert mixed_validation["achieved_contamination_fraction"] == 0.248
     assert [len(seq) for _, seq in fragmented_records] == [100, 100, 50]
 
 

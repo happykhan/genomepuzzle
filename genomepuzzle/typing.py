@@ -150,11 +150,16 @@ def mix_records(
     rng.shuffle(contaminant)
     selected = []
     selected_bases = 0
-    for record in contaminant:
-        selected.append(record)
-        selected_bases += len(record[1])
+    for name, sequence in contaminant:
+        remaining = required_bases - selected_bases
+        selected.append((name, sequence[:remaining]))
+        selected_bases += min(len(sequence), remaining)
         if selected_bases >= required_bases:
             break
+    if selected_bases < required_bases:
+        raise ValueError(
+            "contaminant assembly has too few bases for requested contamination_fraction"
+        )
     return target + selected
 
 
@@ -276,9 +281,22 @@ def _build_typing_sample(
             raise ValueError("FRAGMENTED implant exceeded configured fragment size")
         validation["checks"].append("fragment_size")
     if sample.implant == "MIXED_CONTIGS":
-        if validation["final_bases"] <= original_bases:
+        contaminant_bases = int(validation["final_bases"]) - original_bases
+        if contaminant_bases <= 0:
             raise ValueError("MIXED_CONTIGS did not add contaminant sequence")
-        validation["checks"].append("contaminant_bases_added")
+        requested_fraction = float(
+            sample.implant_parameters.get("contamination_fraction", 0.1)
+        )
+        achieved_fraction = contaminant_bases / original_bases
+        if abs(achieved_fraction - requested_fraction) > 1 / original_bases:
+            raise ValueError(
+                "MIXED_CONTIGS achieved fraction differs from requested fraction"
+            )
+        validation["contaminant_bases"] = contaminant_bases
+        validation["achieved_contamination_fraction"] = round(
+            achieved_fraction, 8
+        )
+        validation["checks"].append("contamination_fraction")
     provenance["validation"] = validation
     return ReleaseArtifactSample(
         sample_id=sample.sample_id,
