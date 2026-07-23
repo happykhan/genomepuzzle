@@ -2,7 +2,11 @@ import gzip
 
 import pytest
 
-from genomepuzzle.sequence_io import anonymize_paired_fastq, fastq_records
+from genomepuzzle.sequence_io import (
+    anonymize_paired_fastq,
+    fastq_records,
+    is_anonymous_fastq_header,
+)
 
 
 def _write(path, header):
@@ -31,3 +35,18 @@ def test_fastq_validation_rejects_sequence_quality_mismatch(tmp_path):
         handle.write("@read\nACGT\n+\nIII\n")
     with pytest.raises(ValueError, match="length mismatch"):
         list(fastq_records(path))
+
+
+def test_badread_generic_headers_are_safe_but_source_headers_are_not():
+    assert is_anonymous_fastq_header(
+        "@uuid junk_seq length=1000\n", "Sample_x"
+    )
+    assert is_anonymous_fastq_header(
+        "@uuid random_seq length=1000\n", "Sample_x"
+    )
+    assert is_anonymous_fastq_header(
+        "@uuid Sample_x_contig_00001,+strand,1-1000\n", "Sample_x"
+    )
+    assert not is_anonymous_fastq_header(
+        "@uuid CABFXZ010000001.1,+strand,1-1000\n", "Sample_x"
+    )

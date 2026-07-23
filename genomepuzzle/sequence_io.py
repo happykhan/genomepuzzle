@@ -51,6 +51,15 @@ def _pair_key(header: str) -> str:
     return key
 
 
+def is_anonymous_fastq_header(header: str, sample_id: str) -> bool:
+    """Return whether a header is sample-scoped or a safe Badread generic."""
+
+    if sample_id in header:
+        return True
+    fields = header[1:].strip().split()
+    return len(fields) > 1 and fields[1] in {"junk_seq", "random_seq"}
+
+
 def validate_paired_fastq(
     r1: str | os.PathLike[str],
     r2: str | os.PathLike[str],
@@ -71,7 +80,8 @@ def validate_paired_fastq(
         if _pair_key(record_r1[0]) != _pair_key(record_r2[0]):
             raise ValueError("paired FASTQ identifiers differ")
         if sample_id and (
-            sample_id not in record_r1[0] or sample_id not in record_r2[0]
+            not is_anonymous_fastq_header(record_r1[0], sample_id)
+            or not is_anonymous_fastq_header(record_r2[0], sample_id)
         ):
             raise ValueError("non-anonymous paired FASTQ header")
         count += 1
@@ -87,7 +97,7 @@ def validate_single_fastq(
 
     count = 0
     for count, (header, _, _, _) in enumerate(fastq_records(path), start=1):
-        if sample_id and sample_id not in header:
+        if sample_id and not is_anonymous_fastq_header(header, sample_id):
             raise ValueError("non-anonymous FASTQ header")
     if count == 0:
         raise ValueError("FASTQ contains no reads")

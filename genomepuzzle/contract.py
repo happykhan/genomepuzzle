@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from genomepuzzle.sequence_io import is_anonymous_fastq_header
+
 
 BUNDLE_SCHEMA_VERSION = "2.0"
 SAMPLE_ID_FIELDS = {"sample_id", "sample", "id", "public_name"}
@@ -512,7 +514,7 @@ def validate_release_bundle(
             if details.get("sha256") != sha256_file(path):
                 raise ValueError("checksum mismatch for {0}".format(path.name))
             for header in _read_first_headers(path):
-                if sample["sample_id"] not in header:
+                if not is_anonymous_fastq_header(header, sample["sample_id"]):
                     raise ValueError("non-anonymous sequence header in {0}".format(path.name))
                 anonymous_part = header.replace(sample["sample_id"], "")
                 leaked = [

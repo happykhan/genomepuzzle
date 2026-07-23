@@ -129,6 +129,10 @@ def _simulate_long_reads(
         quantity,
         "--seed",
         str(seed),
+        "--junk_reads",
+        "0",
+        "--random_reads",
+        "0",
     ]
     pigz = require_tool("pigz")
     progress_log = output.with_name(".{0}.badread.log".format(output.name))
