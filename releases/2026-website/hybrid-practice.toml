@@ -1,0 +1,46 @@
+schema_version = "1.0"
+release_id = "2026-website-hybrid-practice"
+exercise = "hybrid"
+mode = "practice"
+master_seed = 4702603
+title = "Hybrid assembly practice"
+description = "Practise hybrid assembly and recognise when long-read evidence is inadequate."
+pass_threshold = 0.8
+
+[inputs]
+source_dir = "../../cache/assemblies"
+
+[[samples]]
+source_id = "GCA_902156115.1"
+public_id = "Sample_HP001"
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+qc = "PASS"
+error = ""
+
+[[samples]]
+source_id = "GCA_902155925.1"
+public_id = "Sample_HP002"
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+qc = "PASS"
+error = ""
+
+[[samples]]
+source_id = "GCA_902155885.1"
+public_id = "Sample_HP003"
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+qc = "PASS"
+error = ""
+
+[[samples]]
+source_id = "GCA_902156185.1"
+public_id = "Sample_HP004"
+implant = "LOW_LONG_COVERAGE"
+[samples.implant_parameters]
+read_fraction = 0.15
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+qc = "FAIL"
+error = "LOW_LONG_COVERAGE"

@@ -1,0 +1,30 @@
+schema_version = "1.0"
+release_id = "2026-website-typing-practice"
+exercise = "typing"
+mode = "practice"
+master_seed = 4702601
+title = "Genotyping practice"
+description = "Practise Klebsiella species, sequence type, surface-locus and carbapenemase calls."
+pass_threshold = 0.8
+
+[inputs]
+source_dir = "../../cache/assemblies"
+
+[[samples]]
+source_id = "GCA_902156115.1"
+public_id = "Sample_TP001"
+
+[[samples]]
+source_id = "GCA_902155925.1"
+public_id = "Sample_TP002"
+
+[[samples]]
+source_id = "GCA_902155885.1"
+public_id = "Sample_TP003"
+
+[[samples]]
+source_id = "GCA_902156185.1"
+public_id = "Sample_TP004"
+implant = "FRAGMENTED"
+[samples.implant_parameters]
+fragment_size = 1000

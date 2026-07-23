@@ -1,0 +1,41 @@
+schema_version = "1.0"
+release_id = "2026-website-typing-challenge"
+exercise = "typing"
+mode = "challenge"
+master_seed = 4702611
+title = "Genotyping challenge"
+description = "Demonstrate robust Klebsiella genotyping and recognise results that require caution."
+pass_threshold = 0.8
+
+[inputs]
+source_dir = "../../cache/assemblies"
+
+[[samples]]
+source_id = "GCA_902156115.1"
+[[samples]]
+source_id = "GCA_902156205.1"
+[[samples]]
+source_id = "GCA_902156055.1"
+[[samples]]
+source_id = "GCA_902156095.1"
+[[samples]]
+source_id = "GCA_902156185.1"
+[[samples]]
+source_id = "GCA_902156125.1"
+[[samples]]
+source_id = "GCA_902156825.1"
+[[samples]]
+source_id = "GCA_902155925.1"
+
+[[samples]]
+source_id = "GCA_902155945.1"
+implant = "FRAGMENTED"
+[samples.implant_parameters]
+fragment_size = 1000
+
+[[samples]]
+source_id = "GCA_902156085.1"
+implant = "MIXED_CONTIGS"
+[samples.implant_parameters]
+contaminant_source_id = "GCA_902156075.1"
+contamination_fraction = 0.12
