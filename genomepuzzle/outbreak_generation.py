@@ -6,12 +6,13 @@ import hashlib
 import json
 import os
 import random
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from genomepuzzle.contract import json_dump
 from genomepuzzle.outbreak import build_outbreak_release, read_metadata
 from genomepuzzle.read_generation import _simulate_short_reads
-from genomepuzzle.release import ReleaseSpec
+from genomepuzzle.release import ReleaseSpec, resolve_release_samples
 from genomepuzzle.typing import read_fasta
 
 
@@ -72,7 +73,8 @@ def generate_outbreak_release(
     work = destination / "build" / "work" / "outbreak"
     work.mkdir(parents=True, exist_ok=True)
     metadata = read_metadata(metadata_csv)
-    required_sources = {sample.source_id for sample in spec.samples}
+    resolved_samples = resolve_release_samples(spec, id_salt=id_salt)
+    required_sources = {sample.source_id for sample in resolved_samples}
     missing = required_sources - set(metadata)
     if missing:
         raise ValueError(
@@ -84,7 +86,8 @@ def generate_outbreak_release(
     reference_path = Path(base_genome).resolve()
     reference = _reference_sequence(reference_path)
     cluster_mutations: dict[str, dict[int, str]] = {}
-    for row in metadata.values():
+    for sample in resolved_samples:
+        row = metadata[sample.source_id]
         cluster = row.get("Cluster", "").strip()
         if cluster and cluster not in cluster_mutations:
             cluster_mutations[cluster] = _mutations(
@@ -94,8 +97,9 @@ def generate_outbreak_release(
                 set(),
             )
 
-    simulation_rows = []
-    for source_id, row in metadata.items():
+    def simulate_sample(sample):
+        source_id = sample.source_id
+        row = metadata[source_id]
         cluster = row.get("Cluster", "").strip()
         shared = cluster_mutations.get(cluster, {})
         private = _mutations(
@@ -107,7 +111,7 @@ def generate_outbreak_release(
         mutations = {**shared, **private}
         sample_fasta = work / "{0}.fasta".format(source_id)
         sample_fasta.write_text(
-            ">{0}\n{1}\n".format(source_id, _apply(reference, mutations)),
+            ">{0}\n{1}\n".format(sample.sample_id, _apply(reference, mutations)),
             encoding="utf-8",
         )
         r1 = work / "{0}_R1.fastq.gz".format(source_id)
@@ -122,15 +126,18 @@ def generate_outbreak_release(
             fragment_length=300,
             fragment_sd=50,
         )
-        simulation_rows.append(
-            {
-                "source_id": source_id,
-                "cluster": cluster,
-                "shared_mutations": len(shared),
-                "private_mutations": len(private),
-                "total_mutations": len(mutations),
-            }
-        )
+        return {
+            "source_id": source_id,
+            "cluster": cluster,
+            "shared_mutations": len(shared),
+            "private_mutations": len(private),
+            "total_mutations": len(mutations),
+        }
+
+    allocated_cpus = int(os.environ.get("SLURM_CPUS_PER_TASK", "1"))
+    workers = min(max(1, allocated_cpus), len(resolved_samples))
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        simulation_rows = list(executor.map(simulate_sample, resolved_samples))
     json_dump(
         destination / "build" / "outbreak_simulation.json",
         {
@@ -149,4 +156,5 @@ def generate_outbreak_release(
         metadata_csv,
         destination,
         id_salt=id_salt,
+        preanonymized=True,
     )

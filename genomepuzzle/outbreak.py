@@ -19,7 +19,10 @@ from genomepuzzle.release import (
     write_release_manifests,
 )
 from genomepuzzle.contract import complete_release
-from genomepuzzle.sequence_io import anonymize_paired_fastq_in_place
+from genomepuzzle.sequence_io import (
+    anonymize_paired_fastq_in_place,
+    validate_paired_fastq,
+)
 
 
 OUTBREAK_IMPLANTS = {"NORMAL", "NONE", "LOW_COVERAGE", "CONTAMINATED"}
@@ -102,6 +105,7 @@ def build_outbreak_release(
     metadata_csv: str | Path,
     release_dir: str | Path,
     id_salt: str | None = None,
+    preanonymized: bool = False,
 ) -> dict[str, str]:
     """Build an outbreak release from frozen TreeToReads FASTQ output."""
 
@@ -112,7 +116,13 @@ def build_outbreak_release(
     files_dir.mkdir(parents=True, exist_ok=True)
     metadata = read_metadata(metadata_csv)
     artifacts = [
-        _build_outbreak_sample(sample, Path(source_dir), files_dir, metadata)
+        _build_outbreak_sample(
+            sample,
+            Path(source_dir),
+            files_dir,
+            metadata,
+            preanonymized=preanonymized,
+        )
         for sample in resolve_release_samples(spec, id_salt=id_salt)
     ]
     _write_sample_sheet(destination / "public" / "sample_sheet.csv", artifacts)
@@ -131,6 +141,8 @@ def _build_outbreak_sample(
     source_dir: Path,
     files_dir: Path,
     metadata: dict[str, dict[str, str]],
+    *,
+    preanonymized: bool = False,
 ) -> ReleaseArtifactSample:
     if sample.implant not in OUTBREAK_IMPLANTS:
         raise ValueError("unsupported outbreak implant: {0}".format(sample.implant))
@@ -189,9 +201,16 @@ def _build_outbreak_sample(
         provenance["contaminant_r1_sha256"] = sha256_file(contaminant_r1)
         provenance["contaminant_r2_sha256"] = sha256_file(contaminant_r2)
 
-    provenance["participant_read_pairs"] = anonymize_paired_fastq_in_place(
-        output_r1, output_r2, sample.sample_id
-    )
+    if preanonymized and sample.implant != "CONTAMINATED":
+        provenance["participant_read_pairs"] = validate_paired_fastq(
+            output_r1, output_r2, sample.sample_id
+        )
+    else:
+        # A contaminated sample combines reads generated under two public IDs,
+        # so its final headers must still be normalised to the target ID.
+        provenance["participant_read_pairs"] = anonymize_paired_fastq_in_place(
+            output_r1, output_r2, sample.sample_id
+        )
 
     row = metadata[sample.source_id]
     expected = {

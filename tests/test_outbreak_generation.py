@@ -6,11 +6,14 @@ from genomepuzzle.release import load_release_spec
 
 
 def _fake_short(reference, r1, r2, **_):
+    public_id = reference.read_text(encoding="utf-8").splitlines()[0][1:]
     for path, mate in ((r1, 1), (r2, 2)):
         with gzip.open(path, "wt") as handle:
             for index in range(20):
                 handle.write(
-                    "@simulated-{0}-{1}\nACGT\n+\nIIII\n".format(mate, index)
+                    "@{0}-read-{2}/{1}\nACGT\n+\nIIII\n".format(
+                        public_id, mate, index
+                    )
                 )
 
 
