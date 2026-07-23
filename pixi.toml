@@ -25,8 +25,11 @@ minimap2 = "==2.31"
 mashtree = "==1.4.6"
 iqtree = "==3.1.2"
 tomli = "==2.4.1"
+mkdocs-material = "==9.7.7"
 
 [tasks]
 genomepuzzle = "python -m genomepuzzle.main"
 test = "pytest"
 lint = "python -m py_compile genomepuzzle/*.py genomepuzzle/sample/*.py"
+docs-build = "mkdocs build --strict"
+docs-serve = "mkdocs serve"
