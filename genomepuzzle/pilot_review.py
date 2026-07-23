@@ -178,7 +178,7 @@ def calibrate_release(
         )
 
     sample_reports: list[dict[str, Any]] = []
-    contigs: list[str] = []
+    contigs: list[tuple[str, str]] = []
     for sample in selected_samples:
         sample_id = sample["sample_id"]
         roles = sample["files"]
@@ -250,7 +250,7 @@ def calibrate_release(
                     continue
             report["assembly_metrics"] = fasta_metrics(contig_path)
             report["assembly"] = str(contig_path.relative_to(root))
-            contigs.append(str(contig_path))
+            contigs.append((sample_id, str(contig_path)))
         sample_reports.append(report)
 
     kleborate_output = output / "kleborate"
@@ -260,7 +260,7 @@ def calibrate_release(
         [
             require_tool("kleborate"),
             "-a",
-            *contigs,
+            *(path for _, path in contigs),
             "-o",
             str(kleborate_output),
             "-p",
@@ -270,6 +270,13 @@ def calibrate_release(
     )
     tree_path: Path | None = None
     if exercise == "outbreak":
+        tree_inputs = output / "tree-inputs"
+        tree_inputs.mkdir(exist_ok=True)
+        unique_contigs = []
+        for sample_id, contig in contigs:
+            unique_path = tree_inputs / "{0}.fasta".format(sample_id)
+            shutil.copyfile(contig, unique_path)
+            unique_contigs.append(str(unique_path))
         tree_path = output / "mashtree.dnd"
         _run(
             [
@@ -278,7 +285,7 @@ def calibrate_release(
                 str(threads),
                 "--outtree",
                 str(tree_path),
-                *contigs,
+                *unique_contigs,
             ],
             commands,
         )
