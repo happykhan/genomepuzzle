@@ -15,6 +15,7 @@ def test_cli_shows_help():
     assert "short" in result.stdout
     assert "long" in result.stdout
     assert "rapid" in result.stdout
+    assert "release" in result.stdout
 
 
 def test_hybrid_help_mentions_mode():
@@ -41,3 +42,36 @@ def test_long_hybrid_slurm_help_mentions_partition():
     result = runner.invoke(app, ["long", "hybrid-slurm", "--help"])
     assert result.exit_code == 0
     assert "partition" in result.stdout
+
+
+def test_release_validate_spec_writes_private_mapping(tmp_path):
+    spec = tmp_path / "release.toml"
+    spec.write_text(
+        """
+schema_version = "1.0"
+release_id = "test-typing-practice"
+exercise = "typing"
+mode = "practice"
+master_seed = 42
+
+[[samples]]
+source_id = "GCA_000001.1"
+public_id = "Sample_fixed123"
+""",
+        encoding="utf-8",
+    )
+    output = tmp_path / "resolved.json"
+    result = runner.invoke(
+        app,
+        [
+            "release",
+            "validate-spec",
+            "--spec",
+            str(spec),
+            "--output-json",
+            str(output),
+        ],
+    )
+    assert result.exit_code == 0
+    assert output.exists()
+    assert "Sample_fixed123" in output.read_text(encoding="utf-8")
