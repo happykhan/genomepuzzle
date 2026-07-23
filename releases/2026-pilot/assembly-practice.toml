@@ -1,0 +1,71 @@
+schema_version = "1.0"
+release_id = "2026-pilot-assembly-practice"
+exercise = "assembly"
+mode = "practice"
+master_seed = 4702027
+title = "Short-read assembly practice"
+description = "Assemble anonymous paired reads, identify each organism and recognise datasets that require caution."
+pass_threshold = 0.8
+instructions = [
+  "Assemble every paired-read dataset using your routine workflow.",
+  "Report the species and whether each dataset passes your assembly QC.",
+  "Describe the likely problem for any dataset that fails QC."
+]
+
+[inputs]
+source_dir = "../../generated/2026-pilot/typing-sources"
+
+[[samples]]
+source_id = "GCA_902156115.1"
+public_id = "Sample_AP001"
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+
+[[samples]]
+source_id = "GCA_902155925.1"
+public_id = "Sample_AP002"
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+
+[[samples]]
+source_id = "GCA_902155885.1"
+public_id = "Sample_AP003"
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+
+[[samples]]
+source_id = "GCA_902156075.1"
+public_id = "Sample_AP004"
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+
+[[samples]]
+source_id = "GCA_902156825.1"
+public_id = "Sample_AP005"
+[samples.expected_answers]
+species = "Klebsiella variicola subsp. variicola"
+
+[[samples]]
+source_id = "GCA_902155945.1"
+public_id = "Sample_AP006"
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+
+[[samples]]
+source_id = "GCA_902156185.1"
+public_id = "Sample_AP007"
+implant = "LOW_COVERAGE"
+[samples.implant_parameters]
+read_fraction = 0.15
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+
+[[samples]]
+source_id = "GCA_902156085.1"
+public_id = "Sample_AP008"
+implant = "CONTAMINATED"
+[samples.implant_parameters]
+contaminant_source_id = "GCA_902156075.1"
+contamination_fraction = 0.20
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"

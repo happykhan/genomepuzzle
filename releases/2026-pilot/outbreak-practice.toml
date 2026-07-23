@@ -1,0 +1,56 @@
+schema_version = "1.0"
+release_id = "2026-pilot-outbreak-practice"
+exercise = "outbreak"
+mode = "practice"
+master_seed = 4702029
+title = "Outbreak investigation practice"
+description = "Reconstruct isolate relatedness, identify clusters and recognise samples unsuitable for interpretation."
+pass_threshold = 0.8
+instructions = [
+  "Run your routine read QC and phylogenetic workflow.",
+  "Assign isolates to related clusters without relying on organiser label names.",
+  "Report whether each isolate should be included, excluded or reviewed."
+]
+
+[inputs]
+base_genome = "../../generated/2026-pilot/typing-sources/GCA_902156115.1.fasta"
+metadata_csv = "outbreak-metadata.csv"
+
+[[samples]]
+source_id = "tip-01"
+public_id = "Sample_OP001"
+
+[[samples]]
+source_id = "tip-02"
+public_id = "Sample_OP002"
+
+[[samples]]
+source_id = "tip-03"
+public_id = "Sample_OP003"
+
+[[samples]]
+source_id = "tip-04"
+public_id = "Sample_OP004"
+
+[[samples]]
+source_id = "tip-05"
+public_id = "Sample_OP005"
+
+[[samples]]
+source_id = "tip-06"
+public_id = "Sample_OP006"
+
+[[samples]]
+source_id = "tip-07"
+public_id = "Sample_OP007"
+implant = "LOW_COVERAGE"
+[samples.implant_parameters]
+read_fraction = 0.15
+
+[[samples]]
+source_id = "tip-08"
+public_id = "Sample_OP008"
+implant = "CONTAMINATED"
+[samples.implant_parameters]
+contaminant_source_id = "tip-01"
+contamination_fraction = 0.10
