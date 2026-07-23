@@ -124,6 +124,7 @@ def calibrate_release(
     release_dir: str | os.PathLike[str],
     *,
     reference_dir: str | os.PathLike[str],
+    sample_ids: Iterable[str] = (),
     threads: int = 8,
     memory_gb: int = 32,
 ) -> Path:
@@ -146,6 +147,18 @@ def calibrate_release(
     mash_output.mkdir()
     commands: list[str] = []
     sample_truth = {item["sample_id"]: item for item in provenance["samples"]}
+    requested = set(sample_ids)
+    available = {item["sample_id"] for item in manifest["samples"]}
+    unknown = requested - available
+    if unknown:
+        raise ValueError(
+            "unknown calibration sample IDs: {0}".format(", ".join(sorted(unknown)))
+        )
+    selected_samples = [
+        item
+        for item in manifest["samples"]
+        if not requested or item["sample_id"] in requested
+    ]
 
     reference_path = Path(reference_dir).resolve()
     source_paths = []
@@ -168,7 +181,7 @@ def calibrate_release(
 
     sample_reports: list[dict[str, Any]] = []
     contigs: list[str] = []
-    for sample in manifest["samples"]:
+    for sample in selected_samples:
         sample_id = sample["sample_id"]
         roles = sample["files"]
         paths = {
@@ -281,6 +294,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--release-dir", required=True)
     parser.add_argument("--reference-dir", required=True)
+    parser.add_argument(
+        "--sample-id",
+        action="append",
+        default=[],
+        help="Calibrate only this public sample ID; repeat as needed.",
+    )
     parser.add_argument("--threads", type=int, default=8)
     parser.add_argument("--memory-gb", type=int, default=32)
     args = parser.parse_args()
@@ -288,6 +307,7 @@ def main() -> None:
         calibrate_release(
             args.release_dir,
             reference_dir=args.reference_dir,
+            sample_ids=args.sample_id,
             threads=args.threads,
             memory_gb=args.memory_gb,
         )
