@@ -5,6 +5,7 @@ Runtime helpers for external tool resolution.
 import shutil
 import subprocess
 import gzip
+import os
 
 
 def resolve_tool(name):
@@ -58,11 +59,14 @@ def unzip_archive(archive_path, output_dir):
 def seqtk_sample(input_fastq, output_fastq, seed, amount):
     seqtk = require_tool("seqtk")
     pigz = require_tool("pigz")
+    compression_threads = max(
+        1, int(os.environ.get("SLURM_CPUS_PER_TASK", "1")) // 4
+    )
     command = [seqtk, "sample", "-s", str(seed), str(input_fastq), str(amount)]
     with open(output_fastq, "wb") as output_handle:
         sampler = subprocess.Popen(command, stdout=subprocess.PIPE)
         compressor = subprocess.Popen(
-            [pigz, "-n", "-c"],
+            [pigz, "-n", "-p", str(compression_threads), "-c"],
             stdin=sampler.stdout,
             stdout=output_handle,
         )

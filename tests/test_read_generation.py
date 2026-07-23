@@ -1,5 +1,7 @@
 import gzip
 import json
+import threading
+import time
 
 from genomepuzzle.read_generation import generate_read_release
 from genomepuzzle.release import load_release_spec
@@ -49,3 +51,48 @@ species = "Klebsiella pneumoniae"
     validation = provenance["samples"][0]["provenance"]["validation"]
     assert validation["status"] == "passed"
     assert validation["read_fraction"] == 0.5
+
+
+def test_slurm_allocation_generates_independent_samples_concurrently(
+    tmp_path, monkeypatch
+):
+    spec_path = tmp_path / "assembly.toml"
+    samples = "\n".join(
+        """
+[[samples]]
+source_id = "source-{index}"
+public_id = "Sample_{index}"
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+""".format(index=index)
+        for index in range(4)
+    )
+    spec_path.write_text(
+        'release_id = "parallel"\nexercise = "assembly"\nmode = "practice"\n'
+        + samples,
+        encoding="utf-8",
+    )
+    thread_ids = set()
+
+    def fake_generate(spec, sample, source_path, work_dir):
+        thread_ids.add(threading.get_ident())
+        time.sleep(0.05)
+        return sample.source_id, {"species": "Klebsiella pneumoniae"}, {
+            "status": "passed"
+        }
+
+    monkeypatch.setenv("SLURM_CPUS_PER_TASK", "8")
+    monkeypatch.setattr(
+        "genomepuzzle.read_generation._generate_sample", fake_generate
+    )
+    monkeypatch.setattr(
+        "genomepuzzle.read_generation.package_read_release",
+        lambda *args, **kwargs: {"status": "ok"},
+    )
+
+    result = generate_read_release(
+        load_release_spec(spec_path), tmp_path / "sources", tmp_path / "release"
+    )
+
+    assert result == {"status": "ok"}
+    assert len(thread_ids) > 1

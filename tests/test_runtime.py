@@ -35,5 +35,11 @@ def test_seqtk_sample_connects_files_directly_to_avoid_pipe_deadlock(tmp_path):
         stdout=subprocess.PIPE,
     )
     assert popen.call_args_list[1].kwargs["stdin"] is sampler.stdout
-    assert popen.call_args_list[1].args[0] == ["/pixi/bin/pigz", "-n", "-c"]
+    assert popen.call_args_list[1].args[0] == [
+        "/pixi/bin/pigz",
+        "-n",
+        "-p",
+        "1",
+        "-c",
+    ]
     sampler.stdout.close.assert_called_once()

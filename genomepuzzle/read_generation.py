@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from genomepuzzle.create_error import (
@@ -35,6 +36,11 @@ HYBRID_IMPLANTS = {
     "LONG_READ_QUALITY",
     "CONTAMINATED",
 }
+
+
+def _compression_threads() -> str:
+    allocated = int(os.environ.get("SLURM_CPUS_PER_TASK", "1"))
+    return str(max(1, allocated // 4))
 
 
 def _source_fasta(source_dir: Path, source_id: str) -> Path:
@@ -83,7 +89,18 @@ def _simulate_short_reads(
     generated_r1 = Path(str(prefix) + "1.fq")
     generated_r2 = Path(str(prefix) + "2.fq")
     pigz = require_tool("pigz")
-    subprocess.run([pigz, "-n", "-f", str(generated_r1), str(generated_r2)], check=True)
+    subprocess.run(
+        [
+            pigz,
+            "-n",
+            "-p",
+            _compression_threads(),
+            "-f",
+            str(generated_r1),
+            str(generated_r2),
+        ],
+        check=True,
+    )
     os.replace(str(generated_r1) + ".gz", output_r1)
     os.replace(str(generated_r2) + ".gz", output_r2)
 
@@ -113,7 +130,7 @@ def _simulate_long_reads(
             stderr=progress,
         )
         compressor = subprocess.Popen(
-            [pigz, "-n", "-c"],
+            [pigz, "-n", "-p", _compression_threads(), "-c"],
             stdin=simulator.stdout,
             stdout=handle,
         )
@@ -163,6 +180,165 @@ def _generate_contaminant(
     return r1, r2, long_reads
 
 
+def _generate_sample(
+    spec: ReleaseSpec,
+    sample,
+    source_path: Path,
+    work_dir: Path,
+) -> tuple[str, dict[str, object], dict[str, object]]:
+    allowed = ASSEMBLY_IMPLANTS if spec.exercise == "assembly" else HYBRID_IMPLANTS
+    if sample.implant not in allowed:
+        raise ValueError(
+            "unsupported {0} implant: {1}".format(spec.exercise, sample.implant)
+        )
+    reference = _source_fasta(source_path, sample.source_id)
+    short_parameters = {
+        "coverage": float(_parameter(sample, "short_coverage", 40)),
+        "read_length": int(_parameter(sample, "read_length", 150)),
+        "fragment_length": int(_parameter(sample, "fragment_length", 300)),
+        "fragment_sd": int(_parameter(sample, "fragment_sd", 50)),
+    }
+    base_r1 = work_dir / ".{0}_base_R1.fastq.gz".format(sample.source_id)
+    base_r2 = work_dir / ".{0}_base_R2.fastq.gz".format(sample.source_id)
+    final_r1 = work_dir / "{0}_R1.fastq.gz".format(sample.source_id)
+    final_r2 = work_dir / "{0}_R2.fastq.gz".format(sample.source_id)
+    _simulate_short_reads(
+        reference,
+        base_r1,
+        base_r2,
+        seed=sample.random_seed,
+        **short_parameters,
+    )
+    contaminant_long_for_hybrid: Path | None = None
+    achieved: dict[str, object] = {
+        "status": "passed",
+        "implant": sample.implant,
+        "checks": ["read_simulation", "implant_materialized"],
+    }
+
+    if sample.implant in {"LOW_COVERAGE", "LOW_SHORT_COVERAGE"}:
+        fraction = float(_parameter(sample, "read_fraction", 0.15))
+        subsample_paired_fastq(
+            str(base_r1),
+            str(base_r2),
+            str(final_r1),
+            str(final_r2),
+            fraction,
+            sample.random_seed,
+        )
+        achieved["read_fraction"] = fraction
+    elif sample.implant == "POOR_QUALITY":
+        minimum = int(_parameter(sample, "min_quality", 5))
+        maximum = int(_parameter(sample, "max_quality", 14))
+        degrade_quality(
+            str(base_r1), str(final_r1), minimum, maximum, sample.random_seed
+        )
+        degrade_quality(
+            str(base_r2), str(final_r2), minimum, maximum, sample.random_seed + 1
+        )
+        achieved["quality_range"] = [minimum, maximum]
+    elif sample.implant == "TRUNCATED":
+        length = int(_parameter(sample, "read_length", 35))
+        truncate_fastq(str(base_r1), str(final_r1), length)
+        truncate_fastq(str(base_r2), str(final_r2), length)
+        achieved["read_length"] = length
+    elif sample.implant == "CONTAMINATED":
+        contaminant_id = sample.implant_parameters.get("contaminant_source_id")
+        if not isinstance(contaminant_id, str) or not contaminant_id:
+            raise ValueError("CONTAMINATED requires contaminant_source_id")
+        (
+            contaminant_r1,
+            contaminant_r2,
+            contaminant_long_for_hybrid,
+        ) = _generate_contaminant(
+            source_path,
+            work_dir,
+            contaminant_id,
+            seed=sample.random_seed + 101,
+            short_parameters=short_parameters,
+            include_long=spec.exercise == "hybrid",
+            long_quantity=str(_parameter(sample, "long_quantity", "30x")),
+        )
+        fraction = float(_parameter(sample, "contamination_fraction", 0.2))
+        dirty_r1 = work_dir / ".{0}_dirty_R1.fastq.gz".format(sample.source_id)
+        dirty_r2 = work_dir / ".{0}_dirty_R2.fastq.gz".format(sample.source_id)
+        subsample_paired_fastq(
+            str(contaminant_r1),
+            str(contaminant_r2),
+            str(dirty_r1),
+            str(dirty_r2),
+            fraction,
+            sample.random_seed,
+        )
+        concatenate_fastqs([str(base_r1), str(dirty_r1)], str(final_r1))
+        concatenate_fastqs([str(base_r2), str(dirty_r2)], str(final_r2))
+        achieved["contamination_fraction"] = fraction
+        achieved["contaminant_source_id"] = contaminant_id
+    else:
+        _copy_pair(base_r1, base_r2, final_r1, final_r2)
+
+    if spec.exercise == "hybrid":
+        base_long = work_dir / ".{0}_base_long.fastq.gz".format(sample.source_id)
+        final_long = work_dir / "{0}_long.fastq.gz".format(sample.source_id)
+        quantity = str(_parameter(sample, "long_quantity", "30x"))
+        _simulate_long_reads(
+            reference, base_long, seed=sample.random_seed + 1, quantity=quantity
+        )
+        if sample.implant == "LOW_LONG_COVERAGE":
+            fraction = float(_parameter(sample, "read_fraction", 0.15))
+            subsample_single_fastq(
+                str(base_long),
+                str(final_long),
+                fraction,
+                sample.random_seed,
+            )
+            achieved["long_read_fraction"] = fraction
+        elif sample.implant == "LONG_READ_QUALITY":
+            minimum = int(_parameter(sample, "min_quality", 5))
+            maximum = int(_parameter(sample, "max_quality", 14))
+            degrade_quality(
+                str(base_long),
+                str(final_long),
+                minimum,
+                maximum,
+                sample.random_seed,
+            )
+            achieved["long_quality_range"] = [minimum, maximum]
+        elif sample.implant == "CONTAMINATED":
+            if contaminant_long_for_hybrid is None:
+                raise RuntimeError("hybrid contaminant long reads were not generated")
+            dirty_long = work_dir / ".{0}_dirty_long.fastq.gz".format(
+                sample.source_id
+            )
+            fraction = float(_parameter(sample, "contamination_fraction", 0.2))
+            subsample_single_fastq(
+                str(contaminant_long_for_hybrid),
+                str(dirty_long),
+                fraction,
+                sample.random_seed,
+            )
+            concatenate_fastqs([str(base_long), str(dirty_long)], str(final_long))
+        else:
+            shutil.copyfile(base_long, final_long)
+
+    answers = dict(sample.expected_answers)
+    answers.setdefault(
+        "qc", "pass" if sample.implant in {"NORMAL", "NONE"} else "fail"
+    )
+    answers.setdefault(
+        "error", "none" if sample.implant in {"NORMAL", "NONE"} else sample.implant
+    )
+    if "species" not in answers:
+        species = sample.implant_parameters.get("species")
+        if not species:
+            raise ValueError(
+                "{0} requires expected_answers.species or "
+                "implant_parameters.species".format(sample.source_id)
+            )
+        answers["species"] = species
+    return sample.source_id, answers, achieved
+
+
 def generate_read_release(
     spec: ReleaseSpec,
     source_dir: str | os.PathLike[str],
@@ -180,153 +356,27 @@ def generate_read_release(
     if work_dir.exists():
         shutil.rmtree(work_dir)
     work_dir.mkdir(parents=True)
-    expected: dict[str, dict[str, object]] = {}
-    validations: dict[str, dict[str, object]] = {}
-
-    for sample in resolve_release_samples(spec, id_salt=id_salt):
-        allowed = ASSEMBLY_IMPLANTS if spec.exercise == "assembly" else HYBRID_IMPLANTS
-        if sample.implant not in allowed:
-            raise ValueError(
-                "unsupported {0} implant: {1}".format(spec.exercise, sample.implant)
-            )
-        reference = _source_fasta(source_path, sample.source_id)
-        short_parameters = {
-            "coverage": float(_parameter(sample, "short_coverage", 40)),
-            "read_length": int(_parameter(sample, "read_length", 150)),
-            "fragment_length": int(_parameter(sample, "fragment_length", 300)),
-            "fragment_sd": int(_parameter(sample, "fragment_sd", 50)),
-        }
-        base_r1 = work_dir / ".{0}_base_R1.fastq.gz".format(sample.source_id)
-        base_r2 = work_dir / ".{0}_base_R2.fastq.gz".format(sample.source_id)
-        final_r1 = work_dir / "{0}_R1.fastq.gz".format(sample.source_id)
-        final_r2 = work_dir / "{0}_R2.fastq.gz".format(sample.source_id)
-        _simulate_short_reads(
-            reference,
-            base_r1,
-            base_r2,
-            seed=sample.random_seed,
-            **short_parameters,
+    samples = list(resolve_release_samples(spec, id_salt=id_salt))
+    source_ids = [sample.source_id for sample in samples]
+    if len(source_ids) != len(set(source_ids)):
+        raise ValueError(
+            "assembly and hybrid releases require unique sample source_id values"
         )
-        contaminant_long_for_hybrid: Path | None = None
-        achieved: dict[str, object] = {
-            "status": "passed",
-            "implant": sample.implant,
-            "checks": ["read_simulation", "implant_materialized"],
-        }
-
-        if sample.implant in {"LOW_COVERAGE", "LOW_SHORT_COVERAGE"}:
-            fraction = float(_parameter(sample, "read_fraction", 0.15))
-            subsample_paired_fastq(
-                str(base_r1),
-                str(base_r2),
-                str(final_r1),
-                str(final_r2),
-                fraction,
-                sample.random_seed,
+    allocated_cpus = int(os.environ.get("SLURM_CPUS_PER_TASK", "1"))
+    workers = min(4, max(1, allocated_cpus), len(samples))
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        results = list(
+            executor.map(
+                lambda sample: _generate_sample(
+                    spec, sample, source_path, work_dir
+                ),
+                samples,
             )
-            achieved["read_fraction"] = fraction
-        elif sample.implant == "POOR_QUALITY":
-            minimum = int(_parameter(sample, "min_quality", 5))
-            maximum = int(_parameter(sample, "max_quality", 14))
-            degrade_quality(str(base_r1), str(final_r1), minimum, maximum, sample.random_seed)
-            degrade_quality(str(base_r2), str(final_r2), minimum, maximum, sample.random_seed + 1)
-            achieved["quality_range"] = [minimum, maximum]
-        elif sample.implant == "TRUNCATED":
-            length = int(_parameter(sample, "read_length", 35))
-            truncate_fastq(str(base_r1), str(final_r1), length)
-            truncate_fastq(str(base_r2), str(final_r2), length)
-            achieved["read_length"] = length
-        elif sample.implant == "CONTAMINATED":
-            contaminant_id = sample.implant_parameters.get("contaminant_source_id")
-            if not isinstance(contaminant_id, str) or not contaminant_id:
-                raise ValueError("CONTAMINATED requires contaminant_source_id")
-            contaminant_r1, contaminant_r2, contaminant_long_for_hybrid = _generate_contaminant(
-                source_path,
-                work_dir,
-                contaminant_id,
-                seed=sample.random_seed + 101,
-                short_parameters=short_parameters,
-                include_long=spec.exercise == "hybrid",
-                long_quantity=str(_parameter(sample, "long_quantity", "30x")),
-            )
-            fraction = float(_parameter(sample, "contamination_fraction", 0.2))
-            dirty_r1 = work_dir / ".{0}_dirty_R1.fastq.gz".format(sample.source_id)
-            dirty_r2 = work_dir / ".{0}_dirty_R2.fastq.gz".format(sample.source_id)
-            subsample_paired_fastq(
-                str(contaminant_r1),
-                str(contaminant_r2),
-                str(dirty_r1),
-                str(dirty_r2),
-                fraction,
-                sample.random_seed,
-            )
-            concatenate_fastqs([str(base_r1), str(dirty_r1)], str(final_r1))
-            concatenate_fastqs([str(base_r2), str(dirty_r2)], str(final_r2))
-            achieved["contamination_fraction"] = fraction
-            achieved["contaminant_source_id"] = contaminant_id
-        else:
-            _copy_pair(base_r1, base_r2, final_r1, final_r2)
-
-        if spec.exercise == "hybrid":
-            base_long = work_dir / ".{0}_base_long.fastq.gz".format(sample.source_id)
-            final_long = work_dir / "{0}_long.fastq.gz".format(sample.source_id)
-            quantity = str(_parameter(sample, "long_quantity", "30x"))
-            _simulate_long_reads(
-                reference, base_long, seed=sample.random_seed + 1, quantity=quantity
-            )
-            if sample.implant == "LOW_LONG_COVERAGE":
-                subsample_single_fastq(
-                    str(base_long),
-                    str(final_long),
-                    float(_parameter(sample, "read_fraction", 0.15)),
-                    sample.random_seed,
-                )
-                achieved["long_read_fraction"] = float(
-                    _parameter(sample, "read_fraction", 0.15)
-                )
-            elif sample.implant == "LONG_READ_QUALITY":
-                degrade_quality(
-                    str(base_long),
-                    str(final_long),
-                    int(_parameter(sample, "min_quality", 5)),
-                    int(_parameter(sample, "max_quality", 14)),
-                    sample.random_seed,
-                )
-                achieved["long_quality_range"] = [
-                    int(_parameter(sample, "min_quality", 5)),
-                    int(_parameter(sample, "max_quality", 14)),
-                ]
-            elif sample.implant == "CONTAMINATED":
-                if contaminant_long_for_hybrid is None:
-                    raise RuntimeError("hybrid contaminant long reads were not generated")
-                dirty_long = work_dir / ".{0}_dirty_long.fastq.gz".format(
-                    sample.source_id
-                )
-                subsample_single_fastq(
-                    str(contaminant_long_for_hybrid),
-                    str(dirty_long),
-                    float(_parameter(sample, "contamination_fraction", 0.2)),
-                    sample.random_seed,
-                )
-                concatenate_fastqs([str(base_long), str(dirty_long)], str(final_long))
-            else:
-                shutil.copyfile(base_long, final_long)
-
-        answers = dict(sample.expected_answers)
-        answers.setdefault("qc", "pass" if sample.implant in {"NORMAL", "NONE"} else "fail")
-        answers.setdefault(
-            "error", "none" if sample.implant in {"NORMAL", "NONE"} else sample.implant
         )
-        if "species" not in answers:
-            species = sample.implant_parameters.get("species")
-            if not species:
-                raise ValueError(
-                    "{0} requires expected_answers.species or "
-                    "implant_parameters.species".format(sample.source_id)
-                )
-            answers["species"] = species
-        expected[sample.source_id] = answers
-        validations[sample.source_id] = achieved
+    expected = {source_id: answers for source_id, answers, _ in results}
+    validations = {
+        source_id: validation for source_id, _, validation in results
+    }
 
     return package_read_release(
         spec,
