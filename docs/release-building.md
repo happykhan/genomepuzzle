@@ -19,7 +19,7 @@ pixi run test
 
 ## Cluster workflow
 
-Heavy generation and analysis always run through SLURM:
+Use the persisted SLURM workflow for production generation and analysis:
 
 ```bash
 export GENOMEPUZZLE_ID_SALT="$(openssl rand -hex 32)"

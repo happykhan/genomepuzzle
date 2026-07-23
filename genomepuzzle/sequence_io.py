@@ -51,6 +51,49 @@ def _pair_key(header: str) -> str:
     return key
 
 
+def validate_paired_fastq(
+    r1: str | os.PathLike[str],
+    r2: str | os.PathLike[str],
+    sample_id: str | None = None,
+) -> int:
+    """Validate paired FASTQs, optionally requiring a public ID in every header."""
+
+    count = 0
+    iterator_r1 = fastq_records(r1)
+    iterator_r2 = fastq_records(r2)
+    while True:
+        record_r1 = next(iterator_r1, None)
+        record_r2 = next(iterator_r2, None)
+        if record_r1 is None and record_r2 is None:
+            break
+        if record_r1 is None or record_r2 is None:
+            raise ValueError("paired FASTQs contain different record counts")
+        if _pair_key(record_r1[0]) != _pair_key(record_r2[0]):
+            raise ValueError("paired FASTQ identifiers differ")
+        if sample_id and (
+            sample_id not in record_r1[0] or sample_id not in record_r2[0]
+        ):
+            raise ValueError("non-anonymous paired FASTQ header")
+        count += 1
+    if count == 0:
+        raise ValueError("FASTQ pair contains no reads")
+    return count
+
+
+def validate_single_fastq(
+    path: str | os.PathLike[str], sample_id: str | None = None
+) -> int:
+    """Validate one FASTQ, optionally requiring a public ID in every header."""
+
+    count = 0
+    for count, (header, _, _, _) in enumerate(fastq_records(path), start=1):
+        if sample_id and sample_id not in header:
+            raise ValueError("non-anonymous FASTQ header")
+    if count == 0:
+        raise ValueError("FASTQ contains no reads")
+    return count
+
+
 def anonymize_paired_fastq(
     source_r1: str | os.PathLike[str],
     source_r2: str | os.PathLike[str],

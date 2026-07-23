@@ -13,7 +13,7 @@ and report a QC interpretation.
 | `TRUNCATED` | `read_length` | Unusually short reads |
 | `CONTAMINATED` | `contaminant_source_id`, `contamination_fraction` | Cross-sample or cross-species mixture |
 
-Simulation parameters can be set per sample:
+Short-read depth defaults to 30×. Simulation parameters can be set per sample:
 
 ```toml
 [samples.implant_parameters]

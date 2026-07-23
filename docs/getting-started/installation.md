@@ -1,6 +1,6 @@
 # Installation
 
-GenomePuzzle supports Linux and expects access to a SLURM cluster. The
+GenomePuzzle supports Linux laptops and SLURM clusters. The
 biological tools and Python application are installed from the checked-in Pixi
 lock file.
 
@@ -8,9 +8,9 @@ lock file.
 
 - Git
 - [Pixi](https://pixi.sh/)
-- a working `sbatch`, `squeue` and `sacct` configuration
-- sufficient cluster storage for source assemblies, simulated reads and release
-  bundles
+- sufficient storage for source assemblies, simulated reads and release bundles
+- optionally, working `sbatch`, `squeue` and `sacct` commands for production
+  cluster workflows
 
 Clone the repository and install the locked environment:
 

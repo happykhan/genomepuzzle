@@ -22,6 +22,8 @@ from genomepuzzle.contract import complete_release
 from genomepuzzle.sequence_io import (
     anonymize_paired_fastq,
     anonymize_single_fastq_in_place,
+    validate_paired_fastq,
+    validate_single_fastq,
 )
 
 
@@ -57,6 +59,7 @@ def package_read_release(
     release_dir: str | Path,
     id_salt: str | None = None,
     implant_validations: Mapping[str, Mapping[str, object]] | None = None,
+    preanonymized: bool = False,
 ) -> dict[str, str]:
     """Package final, already-implanted reads for assembly or hybrid exercises."""
 
@@ -85,13 +88,20 @@ def package_read_release(
         )
         output_r1 = files_dir / "{0}_R1.fastq.gz".format(sample.sample_id)
         output_r2 = files_dir / "{0}_R2.fastq.gz".format(sample.sample_id)
-        participant_pairs = anonymize_paired_fastq(
-            source_r1,
-            source_r2,
-            output_r1,
-            output_r2,
-            sample.sample_id,
-        )
+        if preanonymized:
+            participant_pairs = validate_paired_fastq(
+                source_r1, source_r2, sample.sample_id
+            )
+            shutil.copyfile(source_r1, output_r1)
+            shutil.copyfile(source_r2, output_r2)
+        else:
+            participant_pairs = anonymize_paired_fastq(
+                source_r1,
+                source_r2,
+                output_r1,
+                output_r2,
+                sample.sample_id,
+            )
         files = {"read_1": str(output_r1), "read_2": str(output_r2)}
         provenance: dict[str, object] = {
             "source_r1": str(source_r1),
@@ -122,9 +132,14 @@ def package_read_release(
             )
             output_long = files_dir / "{0}_long.fastq.gz".format(sample.sample_id)
             shutil.copyfile(source_long, output_long)
-            provenance["participant_long_reads"] = anonymize_single_fastq_in_place(
-                output_long, sample.sample_id
-            )
+            if preanonymized:
+                provenance["participant_long_reads"] = validate_single_fastq(
+                    output_long, sample.sample_id
+                )
+            else:
+                provenance["participant_long_reads"] = anonymize_single_fastq_in_place(
+                    output_long, sample.sample_id
+                )
             files["long_reads"] = str(output_long)
             provenance["source_long_reads"] = str(source_long)
             provenance["source_long_reads_sha256"] = sha256_file(source_long)

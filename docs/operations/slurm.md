@@ -6,7 +6,9 @@ GenomePuzzle uses a persisted two-stage workflow:
 2. `validate` independently checks the sealed bundle with an `afterok`
    dependency.
 
-There is no local fallback for heavy biological work.
+SLURM is the production accelerator and audit workflow, not a requirement for
+the generator library. Small cohorts can be generated sequentially on a Linux
+laptop with the direct exercise commands.
 
 ## Commands
 

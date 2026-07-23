@@ -63,6 +63,20 @@ pixi run genomepuzzle release build \
 Generation runs first. Independent validation is submitted with an `afterok`
 dependency and therefore cannot seal a failed generation.
 
+For a small laptop cohort, run the exercise command directly instead. It runs
+sequentially when no SLURM CPU allocation is present:
+
+```bash
+pixi run genomepuzzle release generate-reads \
+  --spec releases/my-first-round/hybrid-practice.toml \
+  --source-dir sources/typing \
+  --output-dir generated/my-first-round/hybrid-practice
+
+pixi run genomepuzzle release validate \
+  --release-dir generated/my-first-round/hybrid-practice \
+  --require-complete
+```
+
 ```bash
 pixi run genomepuzzle release status \
   --plan generated/my-first-round/typing-practice/build/plan.json

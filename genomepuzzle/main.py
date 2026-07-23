@@ -442,7 +442,7 @@ if typer is not None:
             ],
         )
 
-    @release_app.command("generate-outbreak", hidden=True)
+    @release_app.command("generate-outbreak")
     def generate_outbreak_release_command(
         spec: str = typer.Option(..., "--spec"),
         metadata_csv: str = typer.Option(..., "--metadata"),
@@ -510,6 +510,11 @@ if typer is not None:
             "--id-salt",
             help="Private ID salt; otherwise use the specification environment variable.",
         ),
+        preanonymized: bool = typer.Option(
+            False,
+            "--preanonymized",
+            help="Validate and copy FASTQs whose headers already contain public sample IDs.",
+        ),
     ):
         release_spec = load_release_spec(spec)
         manifests = package_read_release(
@@ -523,6 +528,7 @@ if typer is not None:
                 if implant_validations
                 else None
             ),
+            preanonymized=preanonymized,
         )
         _print_run_summary(
             "release package-reads",
@@ -535,7 +541,7 @@ if typer is not None:
             ],
         )
 
-    @release_app.command("generate-reads", hidden=True)
+    @release_app.command("generate-reads")
     def generate_read_release_command(
         spec: str = typer.Option(..., "--spec"),
         source_dir: str = typer.Option(..., "--source-dir"),

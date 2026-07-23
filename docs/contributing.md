@@ -12,10 +12,11 @@ pixi run test
 pixi run docs-build
 ```
 
-The login node may run unit tests, specification validation, packaging and
-small smoke tests. Read simulation, assembly, Kleborate batches, phylogenetic
-inference, dataset-wide QC and other heavy biological work must use the
-repository's SLURM workflow.
+On a shared cluster, the login node may run unit tests, specification
+validation, packaging and small smoke tests. Production-scale read simulation,
+assembly, Kleborate batches, phylogenetic inference and dataset-wide QC must
+use the repository's SLURM workflow. Small direct generation runs are
+intentionally supported on standalone Linux laptops.
 
 ## Change expectations
 

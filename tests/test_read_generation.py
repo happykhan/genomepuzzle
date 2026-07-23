@@ -8,11 +8,14 @@ from genomepuzzle.release import load_release_spec
 
 
 def _fake_short(reference, r1, r2, **_):
+    reference_name = reference.read_text().splitlines()[0][1:]
     for path, mate in ((r1, 1), (r2, 2)):
         with gzip.open(path, "wt") as handle:
             for index in range(20):
                 handle.write(
-                    "@source-{0}-{1}\nACGT\n+\nIIII\n".format(mate, index)
+                    "@{0}-{1}/{2}\nACGT\n+\nIIII\n".format(
+                        reference_name, index, mate
+                    )
                 )
 
 
@@ -51,6 +54,10 @@ species = "Klebsiella pneumoniae"
     validation = provenance["samples"][0]["provenance"]["validation"]
     assert validation["status"] == "passed"
     assert validation["read_fraction"] == 0.5
+    with gzip.open(output / "public/files/Sample_a_R1.fastq.gz", "rt") as handle:
+        header = handle.readline()
+    assert "Sample_a" in header
+    assert "source-a" not in header
 
 
 def test_slurm_allocation_generates_independent_samples_concurrently(

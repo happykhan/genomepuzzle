@@ -35,14 +35,14 @@ in the delivery application, not in this repository.
 
 ## A release at a glance
 
-A versioned TOML specification becomes a resolved SLURM plan. The cluster
-generates and analyses the dataset, then an independent validation stage checks
-the public and private artifacts. Passing releases receive a `COMPLETE.json`
-seal and can be handed to the delivery website.
+A versioned TOML specification can run directly on a Linux laptop or become a
+resolved SLURM plan for production. An independent validation checks the public
+and private artifacts. Passing releases receive a `COMPLETE.json` seal and can
+be handed to the delivery website.
 
-Heavy biological work is always submitted to SLURM. Pixi supplies the exact
-software environment, so there are no bundled binaries, Docker fallbacks or
-silent use of whatever happens to be on `PATH`.
+Pixi supplies the exact software environment in both cases, so there are no
+bundled binaries, Docker fallbacks or silent use of whatever happens to be on
+`PATH`.
 
 [Install GenomePuzzle](getting-started/installation.md){ .md-button .md-button--primary }
 [Build a first release](getting-started/first-release.md){ .md-button }

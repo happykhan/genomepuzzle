@@ -18,6 +18,7 @@ from genomepuzzle.create_error import (
 from genomepuzzle.reads_release import package_read_release
 from genomepuzzle.release import ReleaseSpec, resolve_release_samples
 from genomepuzzle.runtime import require_tool
+from genomepuzzle.typing import read_fasta, write_anonymous_fasta
 
 
 ASSEMBLY_IMPLANTS = {
@@ -49,6 +50,16 @@ def _source_fasta(source_dir: Path, source_id: str) -> Path:
         if candidate.is_file():
             return candidate
     raise ValueError("source assembly not found for {0}".format(source_id))
+
+
+def _simulation_reference(
+    source: Path, work_dir: Path, filename: str, sample_id: str
+) -> Path:
+    """Create a reference whose contig names are safe for simulator headers."""
+
+    target = work_dir / filename
+    write_anonymous_fasta(target, read_fasta(source), sample_id)
+    return target
 
 
 def _simulate_short_reads(
@@ -165,9 +176,16 @@ def _generate_contaminant(
     short_parameters: dict,
     include_long: bool,
     long_quantity: str,
+    sample_id: str,
 ) -> tuple[Path, Path, Path | None]:
-    reference = _source_fasta(source_dir, source_id)
+    source_reference = _source_fasta(source_dir, source_id)
     prefix = work_dir / "contaminant-{0}".format(seed)
+    reference = _simulation_reference(
+        source_reference,
+        work_dir,
+        ".contaminant-{0}.reference.fasta".format(seed),
+        sample_id,
+    )
     r1 = Path(str(prefix) + "_R1.fastq.gz")
     r2 = Path(str(prefix) + "_R2.fastq.gz")
     _simulate_short_reads(reference, r1, r2, seed=seed, **short_parameters)
@@ -191,9 +209,15 @@ def _generate_sample(
         raise ValueError(
             "unsupported {0} implant: {1}".format(spec.exercise, sample.implant)
         )
-    reference = _source_fasta(source_path, sample.source_id)
+    source_reference = _source_fasta(source_path, sample.source_id)
+    reference = _simulation_reference(
+        source_reference,
+        work_dir,
+        ".{0}.reference.fasta".format(sample.source_id),
+        sample.sample_id,
+    )
     short_parameters = {
-        "coverage": float(_parameter(sample, "short_coverage", 40)),
+        "coverage": float(_parameter(sample, "short_coverage", 30)),
         "read_length": int(_parameter(sample, "read_length", 150)),
         "fragment_length": int(_parameter(sample, "fragment_length", 300)),
         "fragment_sd": int(_parameter(sample, "fragment_sd", 50)),
@@ -257,7 +281,8 @@ def _generate_sample(
             seed=sample.random_seed + 101,
             short_parameters=short_parameters,
             include_long=spec.exercise == "hybrid",
-            long_quantity=str(_parameter(sample, "long_quantity", "30x")),
+            long_quantity=str(_parameter(sample, "long_quantity", "10x")),
+            sample_id=sample.sample_id,
         )
         fraction = float(_parameter(sample, "contamination_fraction", 0.2))
         dirty_r1 = work_dir / ".{0}_dirty_R1.fastq.gz".format(sample.source_id)
@@ -280,7 +305,7 @@ def _generate_sample(
     if spec.exercise == "hybrid":
         base_long = work_dir / ".{0}_base_long.fastq.gz".format(sample.source_id)
         final_long = work_dir / "{0}_long.fastq.gz".format(sample.source_id)
-        quantity = str(_parameter(sample, "long_quantity", "30x"))
+        quantity = str(_parameter(sample, "long_quantity", "10x"))
         _simulate_long_reads(
             reference, base_long, seed=sample.random_seed + 1, quantity=quantity
         )
@@ -385,4 +410,5 @@ def generate_read_release(
         destination,
         id_salt=id_salt,
         implant_validations=validations,
+        preanonymized=True,
     )

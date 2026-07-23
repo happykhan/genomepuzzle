@@ -2,8 +2,10 @@
 
 ## `sbatch` is unavailable
 
-Run GenomePuzzle on a configured SLURM login node. Generation deliberately
-does not fall back to local execution.
+`release build`, `submit`, `resume`, `status` and `logs` are the audited SLURM
+workflow and require a configured cluster. On a Linux laptop, use the direct
+exercise command such as `release generate-reads`, then run `release validate`.
+GenomePuzzle never silently changes execution mode after a failed submission.
 
 ## Public IDs change between runs
 
