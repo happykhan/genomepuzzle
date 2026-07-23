@@ -103,8 +103,15 @@ def _simulate_long_reads(
         str(seed),
     ]
     pigz = require_tool("pigz")
-    with open(output, "wb") as handle:
-        simulator = subprocess.Popen(command, stdout=subprocess.PIPE)
+    progress_log = output.with_name(".{0}.badread.log".format(output.name))
+    with open(output, "wb") as handle, open(
+        progress_log, "w", encoding="utf-8"
+    ) as progress:
+        simulator = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=progress,
+        )
         compressor = subprocess.Popen(
             [pigz, "-n", "-c"],
             stdin=simulator.stdout,
@@ -116,8 +123,11 @@ def _simulate_long_reads(
         simulator_code = simulator.wait()
     if simulator_code or compressor_code:
         raise subprocess.CalledProcessError(
-            simulator_code or compressor_code, command
+            simulator_code or compressor_code,
+            command,
+            stderr="Badread progress retained in {0}".format(progress_log),
         )
+    progress_log.unlink()
 
 
 def _parameter(sample, name: str, default):
