@@ -13,13 +13,17 @@ from genomepuzzle.release import (
     ReleaseSpec,
     ResolvedReleaseSample,
     resolve_release_samples,
+    require_available_release_directory,
+    sha256_file,
     write_release_manifests,
 )
+from genomepuzzle.contract import complete_release
 
 
 TYPING_IMPLANTS = {"NORMAL", "NONE", "FRAGMENTED", "MIXED_CONTIGS"}
 KLEBORATE_FIELDS = {
-    "kleborate_st": "klebsiella_pneumo_complex__mlst__ST",
+    "species": "enterobacterales__species__species",
+    "st": "klebsiella_pneumo_complex__mlst__ST",
     "k_locus": "klebsiella_pneumo_complex__kaptive__K_locus",
     "capsule_type": "klebsiella_pneumo_complex__kaptive__K_type",
     "wzi": "klebsiella_pneumo_complex__wzi__wzi",
@@ -184,9 +188,7 @@ def build_typing_release(
     if spec.exercise != "typing":
         raise ValueError("typing builder requires exercise = 'typing'")
     source_path = Path(source_dir)
-    destination = Path(release_dir)
-    if destination.exists() and any(destination.iterdir()):
-        raise ValueError("release directory is not empty: {0}".format(destination))
+    destination = require_available_release_directory(release_dir)
     files_dir = destination / "public" / "files"
     files_dir.mkdir(parents=True, exist_ok=True)
 
@@ -205,7 +207,8 @@ def build_typing_release(
             "expected_analysis": "kleborate" if analyser else "pending",
         },
     )
-    (destination / "COMPLETE").write_text("release complete\n", encoding="utf-8")
+    if analyser:
+        complete_release(destination)
     return manifests
 
 
@@ -223,7 +226,12 @@ def _build_typing_sample(
         )
     input_path = _source_path(source_dir, sample.source_id)
     records = read_fasta(input_path)
-    provenance: dict[str, object] = {"source_file": str(input_path)}
+    original_contigs = len(records)
+    original_bases = sum(len(sequence) for _, sequence in records)
+    provenance: dict[str, object] = {
+        "source_file": str(input_path),
+        "source_sha256": sha256_file(input_path),
+    }
 
     if sample.implant == "FRAGMENTED":
         fragment_size = int(sample.implant_parameters.get("fragment_size", 1000))
@@ -245,6 +253,7 @@ def _build_typing_sample(
             sample.random_seed,
         )
         provenance["contaminant_source_file"] = str(contaminant_path)
+        provenance["contaminant_source_sha256"] = sha256_file(contaminant_path)
 
     output_path = files_dir / "{0}.fasta".format(sample.sample_id)
     write_anonymous_fasta(output_path, records, sample.sample_id)
@@ -253,6 +262,24 @@ def _build_typing_sample(
         if analyser
         else {"analysis_status": "pending_kleborate"}
     )
+    validation: dict[str, object] = {
+        "status": "passed",
+        "checks": ["anonymous_fasta", "reference_analysis"],
+        "original_contigs": original_contigs,
+        "original_bases": original_bases,
+        "final_contigs": len(records),
+        "final_bases": sum(len(sequence) for _, sequence in records),
+    }
+    if sample.implant == "FRAGMENTED":
+        fragment_size = int(sample.implant_parameters.get("fragment_size", 1000))
+        if max(len(sequence) for _, sequence in records) > fragment_size:
+            raise ValueError("FRAGMENTED implant exceeded configured fragment size")
+        validation["checks"].append("fragment_size")
+    if sample.implant == "MIXED_CONTIGS":
+        if validation["final_bases"] <= original_bases:
+            raise ValueError("MIXED_CONTIGS did not add contaminant sequence")
+        validation["checks"].append("contaminant_bases_added")
+    provenance["validation"] = validation
     return ReleaseArtifactSample(
         sample_id=sample.sample_id,
         source_id=sample.source_id,

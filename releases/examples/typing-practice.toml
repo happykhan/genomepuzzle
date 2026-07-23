@@ -1,0 +1,27 @@
+schema_version = "1.0"
+release_id = "example-typing-practice"
+exercise = "typing"
+mode = "practice"
+master_seed = 470
+
+[inputs]
+source_dir = "../../sources/typing"
+
+[[samples]]
+source_id = "GCA_000000001.1"
+public_id = "Sample_T001"
+
+[[samples]]
+source_id = "GCA_000000002.1"
+public_id = "Sample_T002"
+implant = "FRAGMENTED"
+[samples.implant_parameters]
+fragment_size = 1000
+
+[[samples]]
+source_id = "GCA_000000003.1"
+public_id = "Sample_T003"
+implant = "MIXED_CONTIGS"
+[samples.implant_parameters]
+contaminant_source_id = "GCA_000000004.1"
+contamination_fraction = 0.10

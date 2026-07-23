@@ -1,0 +1,24 @@
+schema_version = "1.0"
+release_id = "example-outbreak-practice"
+exercise = "outbreak"
+mode = "practice"
+master_seed = 470
+
+[inputs]
+base_genome = "../../sources/outbreak/reference.fasta"
+metadata_csv = "outbreak-metadata.csv"
+
+[[samples]]
+source_id = "tip-01"
+public_id = "Sample_O001"
+
+[[samples]]
+source_id = "tip-02"
+public_id = "Sample_O002"
+implant = "LOW_COVERAGE"
+[samples.implant_parameters]
+read_fraction = 0.15
+
+[[samples]]
+source_id = "tip-03"
+public_id = "Sample_O003"

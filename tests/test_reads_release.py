@@ -1,4 +1,5 @@
 import json
+import gzip
 from pathlib import Path
 
 import pytest
@@ -28,10 +29,14 @@ implant = "LOW_COVERAGE"
 def test_package_read_release(tmp_path, exercise):
     source = tmp_path / "source"
     source.mkdir()
-    (source / "source-a_R1.fastq.gz").write_bytes(b"r1")
-    (source / "source-a_R2.fastq.gz").write_bytes(b"r2")
+    for mate in (1, 2):
+        with gzip.open(
+            source / "source-a_R{0}.fastq.gz".format(mate), "wt"
+        ) as handle:
+            handle.write("@source-a/{0}\nACGT\n+\nIIII\n".format(mate))
     if exercise == "hybrid":
-        (source / "source-a_long.fastq.gz").write_bytes(b"long")
+        with gzip.open(source / "source-a_long.fastq.gz", "wt") as handle:
+            handle.write("@source-a-long\nACGT\n+\nIIII\n")
     spec_path = tmp_path / "release.toml"
     _spec(spec_path, exercise)
     output = tmp_path / "output"
@@ -41,6 +46,9 @@ def test_package_read_release(tmp_path, exercise):
         source,
         {"source-a": {"qc": "fail", "species": "K. pneumoniae"}},
         output,
+        implant_validations={
+            "source-a": {"status": "passed", "checks": ["fixture_validation"]}
+        },
     )
 
     public_text = Path(manifests["public_manifest"]).read_text()
@@ -49,7 +57,7 @@ def test_package_read_release(tmp_path, exercise):
     assert private["samples"][0]["source_id"] == "source-a"
     assert private["samples"][0]["expected_answers"]["qc"] == "fail"
     assert (output / "public/sample_sheet.csv").is_file()
-    assert (output / "COMPLETE").is_file()
+    assert (output / "COMPLETE.json").is_file()
     expected_file_count = 3 if exercise == "hybrid" else 2
     assert len(list((output / "public/files").iterdir())) == expected_file_count
 

@@ -144,7 +144,8 @@ def subsample_paired_fastq(
     - subsample_fraction: float, fraction of reads to retain (default = 0.1 for 10%).
     """
     random.seed(random_seed)
-    assert 0 < subsample_fraction <= 1, "Subsample fraction must be between 0 and 1."
+    if not 0 < subsample_fraction <= 1:
+        raise ValueError("Subsample fraction must be between 0 and 1.")
     if seqtk:
         logging.info("Subsampling using seqtk (r1)...")
         seqtk_sample(input_r1, output_r1, random_seed, subsample_fraction)
@@ -233,7 +234,8 @@ def subsample_single_fastq(
     Subsample a single FASTQ file by fraction.
     """
     random.seed(random_seed)
-    assert 0 < subsample_fraction <= 1, "Subsample fraction must be between 0 and 1."
+    if not 0 < subsample_fraction <= 1:
+        raise ValueError("Subsample fraction must be between 0 and 1.")
     if seqtk:
         logging.info("Subsampling single fastq using seqtk...")
         seqtk_sample(input_fastq, output_fastq, random_seed, subsample_fraction)

@@ -6,7 +6,6 @@ import csv
 import os
 import shutil
 
-from genomepuzzle.runtime import require_tool
 from genomepuzzle.sample_util import run_badread, run_flye, run_spades
 from genomepuzzle.simulate_reads import cleanup_output_dir, fetch_assembly, run_art
 
@@ -15,7 +14,6 @@ def rapid(output_dir, samplelist, random_seed=42):
     """
     Generate a compact assembly benchmark dataset from reference accessions.
     """
-    require_tool("docker")
     with open(samplelist, encoding="utf-8") as handle:
         all_records = [row for row in csv.DictReader(handle)]
     os.makedirs(output_dir, exist_ok=True)

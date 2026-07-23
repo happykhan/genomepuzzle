@@ -4,12 +4,21 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import json
 import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+
+from genomepuzzle.contract import (
+    BUNDLE_SCHEMA_VERSION,
+    exercise_contract,
+    json_dump,
+    normalize_answer_fields,
+    write_participant_contract,
+    write_release_index,
+)
+from genomepuzzle.provenance import runtime_provenance
 
 try:  # Python 3.11+
     import tomllib
@@ -46,6 +55,7 @@ class ReleaseSampleSpec:
     identity_key: str
     implant: str = "NORMAL"
     implant_parameters: Mapping[str, Any] = field(default_factory=dict)
+    expected_answers: Mapping[str, Any] = field(default_factory=dict)
     public_id: str | None = None
 
 
@@ -60,6 +70,11 @@ class ReleaseSpec:
     samples: tuple[ReleaseSampleSpec, ...]
     schema_version: str = RELEASE_SCHEMA_VERSION
     id_salt_env: str = "GENOMEPUZZLE_ID_SALT"
+    title: str | None = None
+    description: str | None = None
+    instructions: tuple[str, ...] = ()
+    pass_threshold: float = 0.8
+    inputs: Mapping[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -72,6 +87,7 @@ class ResolvedReleaseSample:
     random_seed: int
     implant: str
     implant_parameters: Mapping[str, Any] = field(default_factory=dict)
+    expected_answers: Mapping[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -163,6 +179,11 @@ def load_release_spec(path: str | os.PathLike[str]) -> ReleaseSpec:
             raise ValueError(
                 "samples[{0}].implant_parameters must be a table".format(index)
             )
+        expected_answers = raw_sample.get("expected_answers", {})
+        if not isinstance(expected_answers, dict):
+            raise ValueError(
+                "samples[{0}].expected_answers must be a table".format(index)
+            )
 
         public_id = raw_sample.get("public_id")
         if public_id is not None:
@@ -182,6 +203,7 @@ def load_release_spec(path: str | os.PathLike[str]) -> ReleaseSpec:
                 identity_key=identity_key,
                 implant=implant,
                 implant_parameters=parameters,
+                expected_answers=expected_answers,
                 public_id=public_id,
             )
         )
@@ -192,6 +214,30 @@ def load_release_spec(path: str | os.PathLike[str]) -> ReleaseSpec:
         ),
         "id_salt_env",
     )
+    title = raw.get("title")
+    if title is not None:
+        title = _require_non_empty(title, "title")
+    description = raw.get("description")
+    if description is not None:
+        description = _require_non_empty(description, "description")
+    instructions_raw = raw.get("instructions", [])
+    if not isinstance(instructions_raw, list) or any(
+        not isinstance(item, str) or not item.strip() for item in instructions_raw
+    ):
+        raise ValueError("instructions must be an array of non-empty strings")
+    pass_threshold = raw.get("pass_threshold", 0.8)
+    if (
+        not isinstance(pass_threshold, (int, float))
+        or isinstance(pass_threshold, bool)
+        or not 0 < float(pass_threshold) <= 1
+    ):
+        raise ValueError("pass_threshold must be greater than 0 and at most 1")
+    raw_inputs = raw.get("inputs", {})
+    if not isinstance(raw_inputs, dict) or any(
+        not isinstance(key, str) or not isinstance(value, str)
+        for key, value in raw_inputs.items()
+    ):
+        raise ValueError("inputs must be a table of string paths")
     return ReleaseSpec(
         schema_version=schema_version,
         release_id=release_id,
@@ -200,6 +246,11 @@ def load_release_spec(path: str | os.PathLike[str]) -> ReleaseSpec:
         master_seed=master_seed,
         id_salt_env=id_salt_env,
         samples=tuple(samples),
+        title=title,
+        description=description,
+        instructions=tuple(item.strip() for item in instructions_raw),
+        pass_threshold=float(pass_threshold),
+        inputs=dict(raw_inputs),
     )
 
 
@@ -267,6 +318,7 @@ def resolve_release_samples(
                 ),
                 implant=sample.implant,
                 implant_parameters=sample.implant_parameters,
+                expected_answers=sample.expected_answers,
             )
         )
     return tuple(resolved)
@@ -278,6 +330,17 @@ def sha256_file(path: str | os.PathLike[str]) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def require_available_release_directory(path: str | os.PathLike[str]) -> Path:
+    """Allow a workflow's private build state but reject release overwrites."""
+
+    destination = Path(path)
+    if destination.exists():
+        unexpected = [item.name for item in destination.iterdir() if item.name != "build"]
+        if unexpected:
+            raise ValueError("release directory is not empty: {0}".format(destination))
+    return destination
 
 
 def _assert_public_metadata_safe(value: Any, path: str = "metadata") -> None:
@@ -297,9 +360,7 @@ def _assert_public_metadata_safe(value: Any, path: str = "metadata") -> None:
 
 
 def _json_dump(path: Path, payload: Mapping[str, Any]) -> None:
-    with open(path, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2, sort_keys=True)
-        handle.write("\n")
+    json_dump(path, payload)
 
 
 def write_release_manifests(
@@ -336,6 +397,7 @@ def write_release_manifests(
     implant_rows = []
     checksum_lines = []
     seen_ids = set()
+    normalized_answers_by_sample: list[dict[str, Any]] = []
     for sample in samples:
         _require_identifier(sample.sample_id, "sample_id")
         if sample.sample_id in seen_ids:
@@ -388,6 +450,8 @@ def write_release_manifests(
         private_file_checksums = {
             role: details["sha256"] for role, details in file_manifest.items()
         }
+        normalized_answers = normalize_answer_fields(sample.expected_answers)
+        normalized_answers_by_sample.append(normalized_answers)
         private_rows.append(
             {
                 "sample_id": sample.sample_id,
@@ -397,7 +461,7 @@ def write_release_manifests(
                     "type": sample.implant,
                     "parameters": dict(sample.implant_parameters),
                 },
-                "expected_answers": dict(sample.expected_answers),
+                "expected_answers": normalized_answers,
                 "provenance": dict(sample.private_provenance),
                 "file_checksums": private_file_checksums,
             }
@@ -405,7 +469,7 @@ def write_release_manifests(
         answer_rows.append(
             {
                 "sample_id": sample.sample_id,
-                "answers": dict(sample.expected_answers),
+                "answers": normalized_answers,
             }
         )
         implant_rows.append(
@@ -427,15 +491,21 @@ def write_release_manifests(
         )
 
     header = {
-        "schema_version": spec.schema_version,
+        "schema_version": BUNDLE_SCHEMA_VERSION,
         "release_id": spec.release_id,
         "exercise": spec.exercise,
         "mode": spec.mode,
     }
     public_manifest = dict(header)
     public_manifest["samples"] = public_rows
+    contract = exercise_contract(spec.exercise)
+    public_manifest["title"] = spec.title or contract["title"]
+    public_manifest["description"] = spec.description or contract["description"]
     private_manifest = dict(header)
-    private_manifest["generator"] = dict(generator or {})
+    private_manifest["generator"] = {
+        **runtime_provenance(),
+        **dict(generator or {}),
+    }
     private_manifest["samples"] = private_rows
     answer_key = dict(header)
     answer_key["samples"] = answer_rows
@@ -454,12 +524,38 @@ def write_release_manifests(
     implant_manifest_path = private_dir / "implant_manifest.json"
     checksums_path = public_dir / "checksums.sha256"
     _json_dump(public_manifest_path, public_manifest)
+    _json_dump(public_dir / "manifest.json", public_manifest)
     _json_dump(private_manifest_path, private_manifest)
     _json_dump(answer_key_path, answer_key)
     _json_dump(implant_manifest_path, implant_manifest)
     with open(checksums_path, "w", encoding="utf-8") as handle:
         for line in sorted(checksum_lines):
             handle.write(line + "\n")
+
+    common_answer_fields = set(normalized_answers_by_sample[0])
+    for answers in normalized_answers_by_sample[1:]:
+        common_answer_fields &= set(answers)
+    common_answer_fields.discard("analysis_status")
+    write_participant_contract(
+        release_path,
+        release_id=spec.release_id,
+        exercise=spec.exercise,
+        mode=spec.mode,
+        sample_ids=[sample.sample_id for sample in samples],
+        title=spec.title,
+        description=spec.description,
+        instructions=spec.instructions or None,
+        pass_threshold=spec.pass_threshold,
+        scored_fields=common_answer_fields,
+    )
+    write_release_index(
+        release_path,
+        release_id=spec.release_id,
+        exercise=spec.exercise,
+        mode=spec.mode,
+        title=spec.title or contract["title"],
+        description=spec.description or contract["description"],
+    )
 
     return {
         "public_manifest": str(public_manifest_path),

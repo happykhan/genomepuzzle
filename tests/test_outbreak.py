@@ -77,6 +77,6 @@ contamination_fraction = 0.5
 
     with open(output / "public/sample_sheet.csv", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
-    assert rows[0]["Sample"] == "Sample_normal"
+    assert rows[0]["sample_id"] == "Sample_normal"
     assert "Cluster" not in rows[0]
-    assert (output / "COMPLETE").is_file()
+    assert (output / "COMPLETE.json").is_file()

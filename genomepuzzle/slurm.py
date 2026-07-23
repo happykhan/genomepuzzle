@@ -1,9 +1,66 @@
-"""
-Slurm helpers for cluster-backed dataset generation.
-"""
+"""SLURM helpers for cluster-backed dataset generation."""
 
 import os
+import shlex
 import subprocess
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Sequence
+
+
+@dataclass(frozen=True)
+class SlurmResources:
+    partition: str = "short"
+    cpus: int = 4
+    memory_gb: int = 16
+    time_limit: str = "06:00:00"
+
+
+def build_stage_sbatch_script(
+    *,
+    plan_path: Path,
+    stage_name: str,
+    repo_dir: Path,
+    log_dir: Path,
+    resources: SlurmResources,
+    job_name: str,
+) -> str:
+    command = shlex.join(
+        [
+            "pixi",
+            "run",
+            "genomepuzzle",
+            "release",
+            "run-stage",
+            "--plan",
+            str(plan_path),
+            "--stage",
+            stage_name,
+        ]
+    )
+    return """#!/bin/bash
+#SBATCH -J {job_name}
+#SBATCH -p {partition}
+#SBATCH -c {cpus}
+#SBATCH --mem={memory_gb}G
+#SBATCH -t {time_limit}
+#SBATCH -o {stdout}
+#SBATCH -e {stderr}
+
+set -euo pipefail
+cd {repo_dir}
+{command}
+""".format(
+        job_name=job_name,
+        partition=resources.partition,
+        cpus=resources.cpus,
+        memory_gb=resources.memory_gb,
+        time_limit=resources.time_limit,
+        stdout=shlex.quote(str(log_dir / "%x-%j.out")),
+        stderr=shlex.quote(str(log_dir / "%x-%j.err")),
+        repo_dir=shlex.quote(str(repo_dir)),
+        command=command,
+    )
 
 
 def build_hybrid_sbatch_script(
@@ -67,9 +124,18 @@ mkdir -p {output_dir}
     )
 
 
-def submit_sbatch_script(script_path):
+def submit_sbatch_script(
+    script_path: str | os.PathLike[str],
+    dependency_job_ids: Sequence[str] = (),
+):
+    command = ["sbatch", "--parsable"]
+    if dependency_job_ids:
+        command.append(
+            "--dependency=afterok:{0}".format(":".join(dependency_job_ids))
+        )
+    command.append(str(script_path))
     result = subprocess.run(
-        ["sbatch", "--parsable", script_path],
+        command,
         check=True,
         capture_output=True,
         text=True,

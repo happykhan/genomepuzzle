@@ -1,171 +1,67 @@
-# CSV Schemas
+# Participant CSV contract
 
-This document defines the expected CSV inputs and generated CSV outputs used by `genomepuzzle`.
+Every v2 release contains:
 
-## `datasets/samplelist.csv`
+- `public/submission_schema.json`, the machine-readable source of truth; and
+- `public/sample_sheet.csv`, a blank participant template containing every
+  public sample identifier.
 
-Used by `short simulate`, `short contamination`, and legacy workflows.
+GHRUPuzzles must render instructions and validate uploads from this schema
+rather than maintaining a second list of columns.
 
-Required columns:
-- `SAMPLE_NAME`
-- `SHORT_READS`
-- `ASSEMBLY`
-- `SPECIES`
-- `ST`
-- `AMR`
-- `USE_ORIGINAL_READS`
+## Shared rules
 
-Semantics:
-- `SAMPLE_NAME`: internal source identifier
-- `SHORT_READS`: SRA run accession when original reads should be downloaded
-- `ASSEMBLY`: NCBI assembly accession
-- `SPECIES`: organism label used for filtering and reporting
-- `ST`: sequence type label
-- `AMR`: antimicrobial resistance label or summary
-- `USE_ORIGINAL_READS`: `TRUE` or `FALSE`
+- The first column is always `sample_id`.
+- Participants must not add, remove or rename sample identifiers.
+- Column names are lowercase snake case.
+- Required, scored, unscored and alias behaviour is explicit in
+  `submission_schema.json` and `private/scoring_policy.json`.
+- Optional fields remain present in the template.
 
-## Clean short-read `sample_sheet.csv`
+## Genotyping
 
-Produced by `short simulate`. Used as input to `short errors`.
+```text
+sample_id,species,st,k_locus,capsule_type,wzi,o_locus,o_type,bla_carb
+```
 
-Typical columns:
-- `SAMPLE_NAME`
-- `SHORT_READS`
-- `ASSEMBLY`
-- `SPECIES`
-- `ST`
-- `AMR`
-- `USE_ORIGINAL_READS`
-- `public_name`
-- `r1`
-- `r2`
-- `coverage`
-- `read_length`
-- `platform`
-- `fragment_length`
-- `standard_deviation`
-- `random_seed`
-- `QC`
-- `ERROR`
-- `Notes`
+`st` is the canonical sequence-type name. Analyser-specific names such as
+`kleborate_st` never appear in participant or website artifacts.
+`bla_carb` is scored as an order-independent list.
 
-## Short-read implanted outputs
+## Short-read assembly
 
-Produced by `short errors`.
+```text
+sample_id,species,qc,error,notes
+```
 
-### Public `sample_sheet.csv`
+## Hybrid assembly
 
-Columns:
-- `ID`
-- `R1`
-- `R2`
-- `SPECIES`
-- `QC`
-- `ERROR`
-- `ST`
-- `AMR`
-- `Notes`
+```text
+sample_id,species,assembler,qc,error,notes
+```
 
-Public values intentionally hide the real answer key.
+Source/reference accessions are deliberately excluded.
 
-### Private `answer_sheet.csv`
+## Phylogeny and outbreak
 
-Columns:
-- `ID`
-- `R1`
-- `R2`
-- `SPECIES`
-- `QC`
-- `ERROR`
-- `ST`
-- `AMR`
-- `Notes`
+```text
+sample_id,cluster,species,qc_decision,notes
+```
 
-### Private `implant_manifest.csv`
+Cluster labels are arbitrary. Scoring compares the inferred partition rather
+than requiring participants to reproduce organiser label names.
 
-Columns:
-- `sample_name`
-- `species`
-- `source_r1`
-- `source_r2`
-- `error_type`
-- `severity`
-- `notes`
-- `read_count`
+## Epidemiological metadata
 
-## `datasets/rapid_data.csv`
+The private outbreak-generation metadata CSV requires:
 
-Used by `rapid` and `long hybrid`.
+- `Sample`: private source/tip identifier;
+- `Cluster`: private expected cluster;
+- `SPECIES`: private expected species.
 
-Required columns:
-- `accession`
+Any other columns are included as public contextual metadata unless explicitly
+classified as private by the generator. Private source identifiers are always
+replaced by the release sample IDs.
 
-Common optional columns:
-- `organism_organismname`
-- `species`
-- `assemblystats_totalsequencelength`
-- `short_read_coverage`
-- `public_name`
-
-## Hybrid public `sample_sheet.csv`
-
-Produced by `long hybrid`.
-
-Columns:
-- `sample_name`
-- `reference_accession`
-- `species`
-- `tax_classification`
-- `r1`
-- `r2`
-- `long_reads`
-- `assembler`
-- `qc`
-- `notes`
-
-## Hybrid private `answer_sheet.csv`
-
-Columns:
-- `public_name`
-- `species`
-- `reference_accession`
-- `tax_classification`
-- `assembler`
-- `qc`
-- `notes`
-- `error_type`
-- `severity`
-
-## Hybrid private `implant_manifest.csv`
-
-Columns:
-- `sample_name`
-- `reference_accession`
-- `species`
-- `error_type`
-- `severity`
-- `notes`
-- `short_read_count`
-- `long_read_count`
-
-## Long QC summary `long_qc_summary.csv`
-
-Produced by `long qc`.
-
-Columns:
-- `sample_name`
-- `species`
-- `reference_accession`
-- `r1`
-- `r2`
-- `long_reads`
-- `short_read_count`
-- `short_total_bases`
-- `short_mean_read_length`
-- `short_mean_quality`
-- `long_read_count`
-- `long_total_bases`
-- `long_mean_read_length`
-- `long_mean_quality`
-- `long_n50_length`
-- `flags`
+Legacy CSV formats are accepted only by commands under `genomepuzzle legacy`;
+they are not valid v2 release bundles.

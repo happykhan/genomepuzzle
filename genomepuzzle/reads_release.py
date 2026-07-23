@@ -12,7 +12,14 @@ from genomepuzzle.release import (
     ReleaseArtifactSample,
     ReleaseSpec,
     resolve_release_samples,
+    require_available_release_directory,
+    sha256_file,
     write_release_manifests,
+)
+from genomepuzzle.contract import complete_release
+from genomepuzzle.sequence_io import (
+    anonymize_paired_fastq,
+    anonymize_single_fastq_in_place,
 )
 
 
@@ -44,23 +51,28 @@ def _find_asset(source_dir: Path, source_id: str, suffixes: tuple[str, ...]) -> 
 def package_read_release(
     spec: ReleaseSpec,
     source_dir: str | Path,
-    expected_answers: Mapping[str, Mapping[str, object]],
+    expected_answers: Mapping[str, Mapping[str, object]] | None,
     release_dir: str | Path,
     id_salt: str | None = None,
+    implant_validations: Mapping[str, Mapping[str, object]] | None = None,
 ) -> dict[str, str]:
     """Package final, already-implanted reads for assembly or hybrid exercises."""
 
     if spec.exercise not in {"assembly", "hybrid"}:
         raise ValueError("read packager requires exercise = 'assembly' or 'hybrid'")
-    destination = Path(release_dir)
-    if destination.exists() and any(destination.iterdir()):
-        raise ValueError("release directory is not empty: {0}".format(destination))
+    destination = require_available_release_directory(release_dir)
     files_dir = destination / "public" / "files"
     files_dir.mkdir(parents=True, exist_ok=True)
     source_path = Path(source_dir)
+    answers_by_source = dict(expected_answers or {})
+    for sample_spec in spec.samples:
+        if sample_spec.expected_answers:
+            answers_by_source.setdefault(
+                sample_spec.source_id, sample_spec.expected_answers
+            )
     artifacts = []
     for sample in resolve_release_samples(spec, id_salt=id_salt):
-        if sample.source_id not in expected_answers:
+        if sample.source_id not in answers_by_source:
             raise ValueError("expected answers missing source {0}".format(sample.source_id))
         source_r1 = _find_asset(
             source_path, sample.source_id, ("_R1.fastq.gz", "_1.fastq.gz", "_1.fq.gz")
@@ -70,13 +82,35 @@ def package_read_release(
         )
         output_r1 = files_dir / "{0}_R1.fastq.gz".format(sample.sample_id)
         output_r2 = files_dir / "{0}_R2.fastq.gz".format(sample.sample_id)
-        shutil.copyfile(source_r1, output_r1)
-        shutil.copyfile(source_r2, output_r2)
+        participant_pairs = anonymize_paired_fastq(
+            source_r1,
+            source_r2,
+            output_r1,
+            output_r2,
+            sample.sample_id,
+        )
         files = {"read_1": str(output_r1), "read_2": str(output_r2)}
         provenance: dict[str, object] = {
             "source_r1": str(source_r1),
             "source_r2": str(source_r2),
+            "source_r1_sha256": sha256_file(source_r1),
+            "source_r2_sha256": sha256_file(source_r2),
+            "participant_read_pairs": participant_pairs,
         }
+        validation = dict((implant_validations or {}).get(sample.source_id, {}))
+        if sample.implant in {"NORMAL", "NONE"} and not validation:
+            validation = {
+                "status": "passed",
+                "checks": ["paired_fastq_structure", "anonymous_headers"],
+                "implant": sample.implant,
+            }
+        if validation.get("status") != "passed":
+            raise ValueError(
+                "troublesome sample {0} requires a passing implant validation".format(
+                    sample.source_id
+                )
+            )
+        provenance["validation"] = validation
         if spec.exercise == "hybrid":
             source_long = _find_asset(
                 source_path,
@@ -85,15 +119,19 @@ def package_read_release(
             )
             output_long = files_dir / "{0}_long.fastq.gz".format(sample.sample_id)
             shutil.copyfile(source_long, output_long)
+            provenance["participant_long_reads"] = anonymize_single_fastq_in_place(
+                output_long, sample.sample_id
+            )
             files["long_reads"] = str(output_long)
             provenance["source_long_reads"] = str(source_long)
+            provenance["source_long_reads_sha256"] = sha256_file(source_long)
         artifacts.append(
             ReleaseArtifactSample(
                 sample_id=sample.sample_id,
                 source_id=sample.source_id,
                 random_seed=sample.random_seed,
                 files=files,
-                expected_answers=expected_answers[sample.source_id],
+                expected_answers=answers_by_source[sample.source_id],
                 implant=sample.implant,
                 implant_parameters=sample.implant_parameters,
                 public_metadata={"format": "paired FASTQ"}
@@ -112,7 +150,7 @@ def package_read_release(
             "input_stage": "final_implanted_reads",
         },
     )
-    (destination / "COMPLETE").write_text("release complete\n", encoding="utf-8")
+    complete_release(destination)
     return manifests
 
 

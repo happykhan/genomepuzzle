@@ -10,6 +10,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from genomepuzzle.contamination import contamination_menu
+from genomepuzzle.contract import inspect_release, validate_release_bundle
 from genomepuzzle.create_error import introduce_errors
 from genomepuzzle.hybrid import create_hybrid_dataset
 from genomepuzzle.long_qc import (
@@ -19,13 +20,22 @@ from genomepuzzle.long_qc import (
     write_report_outputs,
 )
 from genomepuzzle.outbreak import build_outbreak_release
+from genomepuzzle.outbreak_generation import generate_outbreak_release
 from genomepuzzle.rapid import rapid
+from genomepuzzle.read_generation import generate_read_release
 from genomepuzzle.reads_release import load_expected_answers, package_read_release
 from genomepuzzle.release import load_release_spec, resolve_release_samples
 from genomepuzzle.simulate_reads import simulate_reads
 from genomepuzzle.slurm import build_hybrid_sbatch_script, submit_sbatch_script
 from genomepuzzle.sources import fetch_assembly_sources
 from genomepuzzle.typing import build_typing_release, run_kleborate
+from genomepuzzle.workflow import (
+    build_release_plan,
+    run_stage,
+    submit_plan,
+    workflow_status,
+    write_release_plan,
+)
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -70,13 +80,9 @@ if typer is not None:
         add_completion=False,
         rich_markup_mode="rich",
     )
-    short_app = typer.Typer(
-        rich_markup_mode="rich",
-        help="Short-read dataset generation and implant workflows.",
-    )
     long_app = typer.Typer(
         rich_markup_mode="rich",
-        help="Long-read (ONT/PacBio) QC and hybrid assembly workflows.",
+        help="Read-only QC and reporting for long-read datasets.",
     )
     legacy_app = typer.Typer(
         rich_markup_mode="rich",
@@ -84,9 +90,8 @@ if typer is not None:
     )
     release_app = typer.Typer(
         rich_markup_mode="rich",
-        help="Validate and resolve versioned assessment release specifications.",
+        help="Plan, build, resume, validate and inspect assessment releases.",
     )
-    app.add_typer(short_app, name="short")
     app.add_typer(long_app, name="long")
     app.add_typer(release_app, name="release")
     app.add_typer(legacy_app, name="legacy")
@@ -173,6 +178,148 @@ if typer is not None:
                         output_path
                     )
                 )
+
+    @release_app.command("plan")
+    def plan_release_command(
+        spec: str = typer.Option(..., "--spec", help="Versioned release TOML."),
+        output_dir: str = typer.Option(
+            ..., "--output-dir", help="Release directory and workflow state."
+        ),
+        id_salt: str = typer.Option(
+            None,
+            "--id-salt",
+            help="Private ID salt; otherwise use the specification environment variable.",
+        ),
+        partition: str = typer.Option("short", "--partition", help="SLURM partition."),
+    ):
+        plan = build_release_plan(
+            spec,
+            output_dir,
+            id_salt=id_salt,
+            partition=partition,
+        )
+        plan_path = write_release_plan(plan)
+        _print_run_summary(
+            "release plan",
+            [
+                ("release_id", plan.release_id),
+                ("samples", len(plan.samples)),
+                ("stages", ", ".join(stage.name for stage in plan.stages)),
+                ("plan", plan_path),
+            ],
+        )
+
+    @release_app.command("build")
+    def build_release_command(
+        spec: str = typer.Option(..., "--spec", help="Versioned release TOML."),
+        output_dir: str = typer.Option(..., "--output-dir", help="Release directory."),
+        id_salt: str = typer.Option(
+            None,
+            "--id-salt",
+            help="Private ID salt; otherwise use the specification environment variable.",
+        ),
+        partition: str = typer.Option("short", "--partition", help="SLURM partition."),
+    ):
+        plan = build_release_plan(
+            spec,
+            output_dir,
+            id_salt=id_salt,
+            partition=partition,
+        )
+        plan_path = write_release_plan(plan)
+        jobs = submit_plan(plan_path)
+        _print_run_summary(
+            "release build",
+            [
+                ("release_id", plan.release_id),
+                ("plan", plan_path),
+                ("submitted", ", ".join("{0}={1}".format(*item) for item in jobs.items())),
+            ],
+        )
+
+    @release_app.command("submit")
+    def submit_release_command(
+        plan: str = typer.Option(..., "--plan", help="Workflow build/plan.json."),
+    ):
+        jobs = submit_plan(plan)
+        if not jobs:
+            raise typer.BadParameter("no stages are eligible for submission")
+        _print_run_summary("release submit", list(jobs.items()))
+
+    @release_app.command("resume")
+    def resume_release_command(
+        plan: str = typer.Option(..., "--plan", help="Workflow build/plan.json."),
+    ):
+        jobs = submit_plan(plan, retry=True)
+        if not jobs:
+            raise typer.BadParameter("no failed or planned stages are eligible")
+        _print_run_summary("release resume", list(jobs.items()))
+
+    @release_app.command("status")
+    def release_status_command(
+        plan: str = typer.Option(..., "--plan", help="Workflow build/plan.json."),
+    ):
+        states = workflow_status(plan)
+        _print_run_summary(
+            "release status",
+            [
+                (
+                    state["stage"],
+                    "{0}{1}".format(
+                        state["status"],
+                        " ({0})".format(state["job_id"]) if state.get("job_id") else "",
+                    ),
+                )
+                for state in states
+            ],
+        )
+
+    @release_app.command("logs")
+    def release_logs_command(
+        plan: str = typer.Option(..., "--plan", help="Workflow build/plan.json."),
+    ):
+        log_dir = os.path.join(os.path.dirname(os.path.abspath(plan)), "logs")
+        files = (
+            sorted(os.path.join(log_dir, name) for name in os.listdir(log_dir))
+            if os.path.isdir(log_dir)
+            else []
+        )
+        _print_run_summary(
+            "release logs",
+            [("log_dir", log_dir), ("files", "\n".join(files) or "<none>")],
+        )
+
+    @release_app.command("run-stage", hidden=True)
+    def run_release_stage_command(
+        plan: str = typer.Option(..., "--plan"),
+        stage: str = typer.Option(..., "--stage"),
+    ):
+        run_stage(plan, stage)
+
+    @release_app.command("validate")
+    def validate_release_command(
+        release_dir: str = typer.Option(..., "--release-dir"),
+        require_complete: bool = typer.Option(False, "--require-complete"),
+    ):
+        report = validate_release_bundle(
+            release_dir, require_complete=require_complete
+        )
+        _print_run_summary(
+            "release validate",
+            [
+                ("release_id", report["release_id"]),
+                ("status", report["status"]),
+                ("samples", report["sample_count"]),
+                ("participant_files", report["participant_file_count"]),
+            ],
+        )
+
+    @release_app.command("inspect")
+    def inspect_release_command(
+        release_dir: str = typer.Option(..., "--release-dir"),
+    ):
+        details = inspect_release(release_dir)
+        _print_run_summary("release inspect", list(details.items()))
 
     @release_app.command("build-typing")
     def build_typing_release_command(
@@ -295,6 +442,43 @@ if typer is not None:
             ],
         )
 
+    @release_app.command("generate-outbreak", hidden=True)
+    def generate_outbreak_release_command(
+        spec: str = typer.Option(..., "--spec"),
+        metadata_csv: str = typer.Option(..., "--metadata"),
+        output_dir: str = typer.Option(..., "--output-dir"),
+        base_genome: str = typer.Option(None, "--base-genome"),
+        source_dir: str = typer.Option(None, "--source-dir"),
+        id_salt: str = typer.Option(None, "--id-salt"),
+    ):
+        release_spec = load_release_spec(spec)
+        if base_genome:
+            manifests = generate_outbreak_release(
+                release_spec,
+                base_genome,
+                metadata_csv,
+                output_dir,
+                id_salt=id_salt,
+            )
+        elif source_dir:
+            manifests = build_outbreak_release(
+                release_spec,
+                source_dir,
+                metadata_csv,
+                output_dir,
+                id_salt=id_salt,
+            )
+        else:
+            raise typer.BadParameter("--base-genome or --source-dir is required")
+        _print_run_summary(
+            "release generate-outbreak",
+            [
+                ("release_id", release_spec.release_id),
+                ("samples", len(release_spec.samples)),
+                ("public_manifest", manifests["public_manifest"]),
+            ],
+        )
+
     @release_app.command("package-reads")
     def package_read_release_command(
         spec: str = typer.Option(
@@ -306,9 +490,17 @@ if typer is not None:
             help="Directory containing final implanted FASTQ files.",
         ),
         expected_answers: str = typer.Option(
-            ...,
+            None,
             "--expected-answers",
-            help="Private JSON answer object keyed by source ID.",
+            help=(
+                "Private JSON answer object keyed by source ID. Optional when every "
+                "[[samples]] has a [samples.expected_answers] table."
+            ),
+        ),
+        implant_validations: str = typer.Option(
+            None,
+            "--implant-validations",
+            help="Private JSON validation object keyed by source ID.",
         ),
         output_dir: str = typer.Option(
             ..., "--output-dir", help="New directory for the release package."
@@ -323,9 +515,14 @@ if typer is not None:
         manifests = package_read_release(
             release_spec,
             source_dir,
-            load_expected_answers(expected_answers),
+            load_expected_answers(expected_answers) if expected_answers else None,
             output_dir,
             id_salt=id_salt,
+            implant_validations=(
+                load_expected_answers(implant_validations)
+                if implant_validations
+                else None
+            ),
         )
         _print_run_summary(
             "release package-reads",
@@ -338,8 +535,31 @@ if typer is not None:
             ],
         )
 
-    @app.command("simulate")
-    @short_app.command("simulate")
+    @release_app.command("generate-reads", hidden=True)
+    def generate_read_release_command(
+        spec: str = typer.Option(..., "--spec"),
+        source_dir: str = typer.Option(..., "--source-dir"),
+        output_dir: str = typer.Option(..., "--output-dir"),
+        id_salt: str = typer.Option(None, "--id-salt"),
+    ):
+        release_spec = load_release_spec(spec)
+        manifests = generate_read_release(
+            release_spec,
+            source_dir,
+            output_dir,
+            id_salt=id_salt,
+        )
+        _print_run_summary(
+            "release generate-reads",
+            [
+                ("release_id", release_spec.release_id),
+                ("exercise", release_spec.exercise),
+                ("samples", len(release_spec.samples)),
+                ("public_manifest", manifests["public_manifest"]),
+            ],
+        )
+
+    @legacy_app.command("simulate")
     def simulate_command(
         num_samples: int = typer.Option(10, help="Number of samples to generate."),
         samplelist: str = typer.Option(
@@ -365,8 +585,7 @@ if typer is not None:
         )
         simulate_reads(num_samples, samplelist, species, output_dir, random_seed)
 
-    @app.command("errors")
-    @short_app.command("errors")
+    @legacy_app.command("errors")
     def errors_command(
         sample_sheet: str = typer.Option(
             "output_dataset/sample_sheet.csv",
@@ -399,7 +618,7 @@ if typer is not None:
             sample_sheet, error_proportion, contamination_list, output_dir, random_seed
         )
 
-    @app.command("rapid")
+    @legacy_app.command("rapid")
     def rapid_command(
         samplelist: str = typer.Option(
             "rapid_data.csv", help="CSV file describing assembly accessions."
@@ -413,8 +632,7 @@ if typer is not None:
         )
         rapid(output_dir, samplelist)
 
-    @app.command("hybrid")
-    @long_app.command("hybrid")
+    @legacy_app.command("hybrid")
     def hybrid_command(
         samplelist: str = typer.Option(
             "rapid_data.csv", help="CSV file describing source assemblies."
@@ -516,7 +734,7 @@ if typer is not None:
         report_rows = compare_qc_to_manifest(qc_rows, manifest)
         write_report_outputs(report_rows, output_csv=output_csv, output_json=output_json)
 
-    @long_app.command("hybrid-slurm")
+    @legacy_app.command("hybrid-slurm")
     def long_hybrid_slurm_command(
         samplelist: str = typer.Option(
             "datasets/rapid_data.csv", help="CSV file describing source assemblies."
@@ -578,8 +796,7 @@ if typer is not None:
             if console:
                 console.print("Submitted Slurm job: [bold]{0}[/bold]".format(job_id))
 
-    @app.command("contamination")
-    @short_app.command("contamination")
+    @legacy_app.command("contamination")
     def contamination_command(
         num_samples: int = typer.Option(10, help="Number of samples to generate."),
         samplelist: str = typer.Option(
@@ -630,8 +847,7 @@ if typer is not None:
         """
         raise typer.BadParameter(
             "The old eqa-test.py entrypoint is being retired. Use "
-            "`short simulate`, `short errors`, `long hybrid`, `rapid`, and "
-            "`short contamination` directly."
+            "`genomepuzzle release build --spec ... --output-dir ...`."
         )
 
 else:

@@ -14,8 +14,12 @@ from genomepuzzle.release import (
     ReleaseSpec,
     ResolvedReleaseSample,
     resolve_release_samples,
+    require_available_release_directory,
+    sha256_file,
     write_release_manifests,
 )
+from genomepuzzle.contract import complete_release
+from genomepuzzle.sequence_io import anonymize_paired_fastq_in_place
 
 
 OUTBREAK_IMPLANTS = {"NORMAL", "NONE", "LOW_COVERAGE", "CONTAMINATED"}
@@ -103,9 +107,7 @@ def build_outbreak_release(
 
     if spec.exercise != "outbreak":
         raise ValueError("outbreak builder requires exercise = 'outbreak'")
-    destination = Path(release_dir)
-    if destination.exists() and any(destination.iterdir()):
-        raise ValueError("release directory is not empty: {0}".format(destination))
+    destination = require_available_release_directory(release_dir)
     files_dir = destination / "public" / "files"
     files_dir.mkdir(parents=True, exist_ok=True)
     metadata = read_metadata(metadata_csv)
@@ -120,7 +122,7 @@ def build_outbreak_release(
         artifacts,
         generator={"module": "genomepuzzle.outbreak", "simulator": "TreeToReads"},
     )
-    (destination / "COMPLETE").write_text("release complete\n", encoding="utf-8")
+    complete_release(destination)
     return manifests
 
 
@@ -140,6 +142,8 @@ def _build_outbreak_sample(
     provenance: dict[str, object] = {
         "source_r1": str(source_r1),
         "source_r2": str(source_r2),
+        "source_r1_sha256": sha256_file(source_r1),
+        "source_r2_sha256": sha256_file(source_r2),
     }
 
     if sample.implant in {"NORMAL", "NONE"}:
@@ -182,6 +186,12 @@ def _build_outbreak_sample(
             temp_r1.unlink(missing_ok=True)
             temp_r2.unlink(missing_ok=True)
         provenance["contaminant_source_id"] = contaminant_id
+        provenance["contaminant_r1_sha256"] = sha256_file(contaminant_r1)
+        provenance["contaminant_r2_sha256"] = sha256_file(contaminant_r2)
+
+    provenance["participant_read_pairs"] = anonymize_paired_fastq_in_place(
+        output_r1, output_r2, sample.sample_id
+    )
 
     row = metadata[sample.source_id]
     expected = {
@@ -195,6 +205,15 @@ def _build_outbreak_sample(
         key: value
         for key, value in row.items()
         if key not in PRIVATE_METADATA_FIELDS and key != "Sample"
+    }
+    provenance["validation"] = {
+        "status": "passed",
+        "checks": [
+            "paired_fastq_structure",
+            "anonymous_headers",
+            "implant_materialized",
+        ],
+        "implant": sample.implant,
     }
     return ReleaseArtifactSample(
         sample_id=sample.sample_id,

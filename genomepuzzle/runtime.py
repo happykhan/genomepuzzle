@@ -2,39 +2,15 @@
 Runtime helpers for external tool resolution.
 """
 
-import os
 import shutil
 import subprocess
 import gzip
 
 
-def project_root():
-    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-
-def bundled_bin_dir():
-    return os.path.join(project_root(), "bin")
-
-
 def resolve_tool(name):
-    """
-    Resolve an executable name from PATH first, then from a configured or bundled bin dir.
-    """
-    path_candidate = shutil.which(name)
-    if path_candidate:
-        return path_candidate
+    """Resolve only from the active Pixi environment's PATH."""
 
-    configured_bin = os.environ.get("GENOMEPUZZLE_BIN_DIR")
-    if configured_bin:
-        candidate = os.path.join(configured_bin, name)
-        if os.path.exists(candidate):
-            return candidate
-
-    bundled = os.path.join(bundled_bin_dir(), name)
-    if os.path.exists(bundled):
-        return bundled
-
-    return name
+    return shutil.which(name) or name
 
 
 def run_command(args, **kwargs):
@@ -54,8 +30,11 @@ def open_maybe_gzip(path, mode):
 
 def require_tool(name):
     candidate = resolve_tool(name)
-    if not shutil.which(candidate) and not os.path.exists(candidate):
-        raise RuntimeError("Required executable not found: {0}".format(name))
+    if not shutil.which(candidate):
+        raise RuntimeError(
+            "Required executable not found in the Pixi environment: {0}. "
+            "Run this command with `pixi run`.".format(name)
+        )
     return candidate
 
 

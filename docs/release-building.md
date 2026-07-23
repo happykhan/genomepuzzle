@@ -1,156 +1,182 @@
 # Building assessment releases
 
-The supported release path is now the `genomepuzzle release` command group.
-The old `eqa-test.py` script remains only as historical reference.
+`genomepuzzle release` is the supported interface for all new datasets.
+Historical generators are quarantined under `genomepuzzle legacy` and do not
+produce publishable v2 releases.
 
-## Execution policy
+## Managed software
 
-Run computationally heavy generation and biological analysis through SLURM,
-including read simulation, assemblies, batch Kleborate analysis, phylogenetic
-inference, outbreak generation, full-dataset implants, and QC. Local commands
-are limited to specification validation, source indexing, packaging,
-manifests, checksums, tests, and small smoke checks.
+Pixi is the only software provider. The Linux cluster environment and every
+biological tool are pinned in `pixi.toml` and `pixi.lock`. There is no
+repository `bin/` directory and there are no Docker or PATH fallback images.
 
-Every heavy job must record its SLURM job ID, requested resources, tool
-versions, seeds, and output directory in private provenance. A failed SLURM
-submission must not silently fall back to local execution.
+Install and test the exact environment:
 
-## 1. Write and validate a specification
-
-```toml
-schema_version = "1.0"
-release_id = "2026-round-1-typing-practice"
-exercise = "typing"
-mode = "practice"
-master_seed = 42
-
-[[samples]]
-source_id = "GCF_000000001.1"
-identity_key = "typing-clean-1"
-
-[[samples]]
-source_id = "GCF_000000002.1"
-identity_key = "typing-fragmented-1"
-implant = "FRAGMENTED"
-[samples.implant_parameters]
-fragment_size = 1000
+```bash
+pixi install --locked
+pixi run test
 ```
 
-Resolve IDs without generating data:
+## Cluster workflow
+
+Heavy generation and analysis always run through SLURM:
 
 ```bash
 export GENOMEPUZZLE_ID_SALT="$(openssl rand -hex 32)"
-pixi run genomepuzzle release validate-spec \
-  --spec releases/2026-round-1/typing-practice.toml \
-  --output-json generated/private-typing-map.json
-```
 
-Keep the salt, resolved mapping, specifications, and every `private/` output
-outside participant-accessible storage.
+pixi run genomepuzzle release plan \
+  --spec releases/my-round/typing-practice.toml \
+  --output-dir generated/typing-practice
 
-## 2. Fetch and build genotyping inputs
-
-For NCBI assembly accessions, fetch and checksum every target and contaminant
-declared by the specification:
-
-```bash
-pixi run genomepuzzle release fetch-assemblies \
-  --spec releases/2026-round-1/typing-practice.toml \
-  --output-dir generated/typing-sources
-```
-
-The cache contains `<source_id>.fasta` plus `sources.json`; a second run reuses
-it. Use `--refresh` only when deliberately recalibrating against a newer NCBI
-assembly version. Locally supplied assemblies can instead be staged under the
-same filename convention.
-
-Supported initial implants are `NORMAL`, `FRAGMENTED`, and `MIXED_CONTIGS`. A
-mixed sample must name its private contaminant:
-
-```toml
-implant = "MIXED_CONTIGS"
-[samples.implant_parameters]
-contaminant_source_id = "GCF_000000099.1"
-contamination_fraction = 0.10
-```
-
-For a single smoke-test sample, the following command can check the packaging
-path. Run the complete Kleborate cohort as a generated SLURM job:
-
-```bash
-pixi run genomepuzzle release build-typing \
-  --spec releases/2026-round-1/typing-practice.toml \
-  --source-dir generated/typing-sources \
+pixi run genomepuzzle release build \
+  --spec releases/my-round/typing-practice.toml \
   --output-dir generated/typing-practice
 ```
 
-Kleborate 3.1.3 is pinned in `pixi.toml`, so production commands must run
-through `pixi run`. The executable override is intended for a separately
-pinned wrapper or container, not an unversioned system installation.
+`build` writes a persisted plan and submits a `generate` job followed by an
+independent `validate` job with an `afterok` dependency. It never runs a heavy
+stage locally when submission fails.
 
-`--skip-analysis` is only for preparation and testing. It creates answers
-marked `pending_kleborate` and must not be used for a published assessment.
-
-## 3. Package short-read and hybrid releases
-
-The existing simulators still perform the expensive biological generation.
-Once implants and reference analysis are complete, prepare a private JSON
-object keyed by source ID:
-
-```json
-{
-  "source-a": {
-    "species": "Klebsiella pneumoniae",
-    "qc": "failed",
-    "diagnosis": "low coverage"
-  }
-}
-```
-
-Final source files use `<source_id>_R1.fastq.gz`,
-`<source_id>_R2.fastq.gz`, and, for hybrid data,
-`<source_id>_long.fastq.gz`.
+Inspect a running or failed workflow:
 
 ```bash
-pixi run genomepuzzle release package-reads \
-  --spec releases/2026-round-1/hybrid-practice.toml \
-  --source-dir final-implanted-reads \
-  --expected-answers private-expected-answers.json \
-  --output-dir generated/hybrid-practice
+pixi run genomepuzzle release status \
+  --plan generated/typing-practice/build/plan.json
+
+pixi run genomepuzzle release logs \
+  --plan generated/typing-practice/build/plan.json
+
+pixi run genomepuzzle release resume \
+  --plan generated/typing-practice/build/plan.json
 ```
 
-This step replaces source names with canonical public IDs, checks every
-expected file, and creates paired public/private manifests.
+Each stage records its command, resources, attempts, job ID, node, timestamps,
+status and failure. A retry removes only partial release artifacts; it
+preserves the build plan, scripts, attempts and logs.
 
-## 4. Build outbreak releases
+## Release specification
 
-TreeToReads simulation output is frozen before packaging. The source directory
-contains paired FASTQs named for tree tips, and the metadata CSV contains a
-`Sample` column plus private `Cluster` and `SPECIES` truth.
+All identities, inputs, implants and expected interpretation live in one
+private TOML specification:
 
-Supported initial implants are `NORMAL`, `LOW_COVERAGE`, and `CONTAMINATED`.
-Cluster truth remains separate from the expected QC inclusion decision.
+```toml
+schema_version = "1.0"
+release_id = "2026-round-1-assembly-practice"
+exercise = "assembly"
+mode = "practice"
+master_seed = 470
+title = "Short-read assembly practice"
+description = "Assemble paired reads and identify problematic datasets."
+pass_threshold = 0.8
+instructions = [
+  "Assemble every paired-read dataset.",
+  "Return the completed sample_sheet.csv."
+]
+
+[inputs]
+source_dir = "../../sources/assemblies"
+
+[[samples]]
+source_id = "GCA_000000001.1"
+identity_key = "assembly-clean-1"
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+
+[[samples]]
+source_id = "GCA_000000002.1"
+identity_key = "assembly-low-coverage-1"
+implant = "LOW_COVERAGE"
+[samples.implant_parameters]
+read_fraction = 0.15
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+```
+
+Public IDs and tool seeds are derived from the release ID, stable identity key,
+master seed and private salt. Reordering samples does not change them.
+Practice specifications may freeze a `public_id`; challenge specifications
+normally omit it.
+
+Paths under `[inputs]` are resolved relative to the specification:
+
+- typing: `source_dir` containing `<source_id>.fasta`;
+- assembly and hybrid: `source_dir` containing reference assemblies;
+- native outbreak simulation: `base_genome` and `metadata_csv`; or
+- pre-simulated outbreak input: `source_dir` and `metadata_csv`.
+
+## Exercise generation
+
+### Genotyping
+
+Typing accepts `NORMAL`, `FRAGMENTED` and `MIXED_CONTIGS`. Kleborate 3.1.3 is
+run on the final anonymous FASTA, not the source assembly. Species and `st` are
+normalised to the website contract.
+
+```toml
+[inputs]
+source_dir = "../../sources/typing"
+
+[[samples]]
+source_id = "GCA_000000099.1"
+implant = "MIXED_CONTIGS"
+[samples.implant_parameters]
+contaminant_source_id = "GCA_000000100.1"
+contamination_fraction = 0.10
+```
+
+### Short-read assembly
+
+ART creates paired reads directly from the frozen reference assembly.
+Supported implants are `LOW_COVERAGE`, `POOR_QUALITY`, `TRUNCATED` and
+`CONTAMINATED`. Every troublesome sample must materialise its requested
+implant; silent fallback to `NORMAL` is forbidden.
+
+### Hybrid assembly
+
+ART and Badread produce the short- and long-read tracks. Supported implants
+are `LOW_SHORT_COVERAGE`, `LOW_LONG_COVERAGE`, `LONG_READ_QUALITY` and
+`CONTAMINATED`. A contaminated hybrid sample receives contamination in both
+data modalities.
+
+### Phylogeny and outbreak
+
+The native generator creates shared cluster mutations and private
+sample-specific mutations from a frozen base genome, then simulates paired
+reads with ART. The metadata CSV requires `Sample`, `Cluster` and `SPECIES`.
+Public metadata may include epidemiological fields, but cluster and species
+truth remain private.
+
+```toml
+[inputs]
+base_genome = "../../sources/outbreak/reference.fasta"
+metadata_csv = "outbreak_metadata.csv"
+```
+
+Existing pre-simulated read cohorts remain supported by using `source_dir`
+instead of `base_genome`.
+
+## Acceptance
+
+A release is publishable only when `COMPLETE.json` exists. Sealing fails when:
+
+- a participant file is absent, malformed or has the wrong checksum;
+- sample membership differs between manifest, template and answer key;
+- an answer is pending or lies outside the submission schema;
+- a scored field is missing;
+- a source identity remains in a sequence header;
+- an implant lacks a passing validation record; or
+- any required public/private contract artifact is absent.
+
+Validate and inspect without biological recomputation:
 
 ```bash
-pixi run genomepuzzle release build-outbreak \
-  --spec releases/2026-round-1/outbreak-practice.toml \
-  --source-dir treetoreads-output \
-  --metadata outbreak_trees/rooted_outbreak_4_clusters.csv \
-  --output-dir generated/outbreak-practice
+pixi run genomepuzzle release validate \
+  --release-dir generated/typing-practice \
+  --require-complete
+
+pixi run genomepuzzle release inspect \
+  --release-dir generated/typing-practice
 ```
 
-## 5. Release acceptance
-
-A release is ready for the portal only when:
-
-- `COMPLETE` exists;
-- `public/dataset_manifest.json` contains no source IDs, implants, or answers;
-- every participant file is listed with its size and SHA-256 digest;
-- `private/answer_key.json`, `provenance.json`, and
-  `implant_manifest.json` are complete;
-- expected analyses were run on the final participant files; and
-- the intended troublesome samples were manually reviewed.
-
-Publication is handled by `ghrupuzzle/scripts/publish_release.py`. It validates
-the package again and uploads public inputs and private truth with separate
-credentials.
+The complete digest covers every published public/private artifact. Mutable
+SLURM state under `build/` is intentionally excluded.

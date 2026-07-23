@@ -16,7 +16,6 @@ class BasicSample:
         input_dict: dict,
         output_dir: str,
         random_seed: int = 42,
-        bin_dir: str = "bin",
         work_dir: str = "work",
     ):
         self._check_sample(input_dict)
@@ -28,19 +27,19 @@ class BasicSample:
         self.assembly = input_dict.get("assembly")
         self.species = input_dict.get("species")
         self.st = input_dict.get("st")
-        self.bin_dir = bin_dir
         self.random_seed = random_seed
         self.use_original_reads = input_dict.get("use_original_reads")
         self.output_dir = output_dir
         self.assembly_file = input_dict.get("assembly_file", None)
         self.r1 = input_dict.get("r1", None)
         self.r2 = input_dict.get("r2", None)
-        self.coverage = input_dict.get("coverage", random.randint(40, 60))
+        self.coverage = input_dict.get(
+            "coverage", random.Random(random_seed).randint(40, 60)
+        )
         self.read_length = 150
         self.platform = "HS25"
         self.fragment_length = 200
         self.standard_deviation = 10
-        self.random_seed = 42
         self.qc = "PASSED"
         self.error = "NONE"
         self.notes = "None"
@@ -55,7 +54,6 @@ class BasicSample:
             "assembly": self.assembly,
             "species": self.species,
             "st": self.st,
-            "bin_dir": self.bin_dir,
             "random_seed": self.random_seed,
             "use_original_reads": self.use_original_reads,
             "output_dir": self.output_dir,

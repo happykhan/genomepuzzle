@@ -76,7 +76,7 @@ def test_build_typing_release_is_anonymous_and_tracks_truth(tmp_path):
     assert private["samples"][1]["provenance"]["contaminant_source_file"].endswith(
         "contaminant.fasta"
     )
-    assert (release_dir / "COMPLETE").is_file()
+    assert (release_dir / "COMPLETE.json").is_file()
 
     clean_records = read_fasta(release_dir / "public/files/Sample_clean.fasta")
     mixed_records = read_fasta(release_dir / "public/files/Sample_mixed.fasta")
