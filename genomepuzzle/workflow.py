@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from genomepuzzle.contract import json_dump, sha256_file, utc_now
+from genomepuzzle.provenance import PLANNED_GIT_COMMIT_ENV
 from genomepuzzle.release import ReleaseSpec, load_release_spec, resolve_release_samples
 from genomepuzzle.slurm import SlurmResources, build_stage_sbatch_script, submit_sbatch_script
 
@@ -405,9 +406,12 @@ def run_stage(plan_path: str | os.PathLike[str], stage_name: str) -> None:
     }
     _write_stage(plan, state)
     try:
+        stage_environment = os.environ.copy()
+        stage_environment[PLANNED_GIT_COMMIT_ENV] = plan["git_commit"]
         subprocess.run(
             definition["command"],
             cwd=plan["repo_dir"],
+            env=stage_environment,
             check=True,
         )
     except BaseException as exc:

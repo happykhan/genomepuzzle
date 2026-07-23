@@ -26,6 +26,7 @@ TRACKED_PACKAGES = {
     "spades",
     "sra-tools",
 }
+PLANNED_GIT_COMMIT_ENV = "GENOMEPUZZLE_PLANNED_GIT_COMMIT"
 
 
 def _git_commit(root: Path) -> str | None:
@@ -69,7 +70,9 @@ def runtime_provenance() -> dict[str, Any]:
     lock = root / "pixi.lock"
     return {
         "generated_at": utc_now(),
-        "genomepuzzle_git_commit": _git_commit(root),
+        "genomepuzzle_git_commit": (
+            os.environ.get(PLANNED_GIT_COMMIT_ENV) or _git_commit(root)
+        ),
         "pixi_lock_sha256": sha256_file(lock) if lock.is_file() else None,
         "pixi_packages": _pixi_packages(),
         "slurm": {

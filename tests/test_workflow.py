@@ -3,6 +3,7 @@ from pathlib import Path
 
 from genomepuzzle.workflow import (
     build_release_plan,
+    run_stage,
     submit_plan,
     workflow_status,
     write_release_plan,
@@ -151,3 +152,24 @@ public_id = "Sample_one"
     )
     assert "generate-outbreak" in plan.stages[0].command
     assert "--base-genome" in plan.stages[0].command
+
+
+def test_run_stage_freezes_planned_git_commit_in_environment(tmp_path, monkeypatch):
+    source = tmp_path / "sources"
+    source.mkdir()
+    spec = tmp_path / "release.toml"
+    _spec(spec, source)
+    output = tmp_path / "output"
+    plan_path = write_release_plan(
+        build_release_plan(spec, output, repo_dir=Path(__file__).parents[1])
+    )
+    plan = json.loads(plan_path.read_text())
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+
+    monkeypatch.setattr("genomepuzzle.workflow.subprocess.run", fake_run)
+    run_stage(plan_path, "generate")
+
+    assert calls[0][1]["env"]["GENOMEPUZZLE_PLANNED_GIT_COMMIT"] == plan["git_commit"]
