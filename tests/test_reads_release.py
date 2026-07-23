@@ -1,5 +1,7 @@
-import json
 import gzip
+import json
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -71,3 +73,57 @@ def test_package_read_release_requires_answers(tmp_path):
         package_read_release(
             load_release_spec(spec_path), source, {}, tmp_path / "output"
         )
+
+
+def test_package_read_release_uses_slurm_cpus_for_independent_samples(
+    tmp_path, monkeypatch
+):
+    source = tmp_path / "source"
+    source.mkdir()
+    sample_blocks = []
+    answers = {}
+    for index in range(4):
+        source_id = "source-{0}".format(index)
+        sample_blocks.append(
+            """
+[[samples]]
+source_id = "{source_id}"
+public_id = "Sample_{index}"
+""".format(source_id=source_id, index=index)
+        )
+        answers[source_id] = {"qc": "pass", "species": "K. pneumoniae"}
+        for mate in (1, 2):
+            with gzip.open(
+                source / "{0}_R{1}.fastq.gz".format(source_id, mate), "wt"
+            ) as handle:
+                handle.write("@{0}/{1}\nACGT\n+\nIIII\n".format(source_id, mate))
+    spec_path = tmp_path / "release.toml"
+    spec_path.write_text(
+        'release_id = "parallel-package"\n'
+        'exercise = "assembly"\n'
+        'mode = "practice"\n'
+        + "\n".join(sample_blocks),
+        encoding="utf-8",
+    )
+
+    from genomepuzzle import reads_release
+
+    original = reads_release.anonymize_paired_fastq
+    thread_ids = set()
+
+    def observed_anonymize(*args, **kwargs):
+        thread_ids.add(threading.get_ident())
+        time.sleep(0.05)
+        return original(*args, **kwargs)
+
+    monkeypatch.setenv("SLURM_CPUS_PER_TASK", "8")
+    monkeypatch.setattr(reads_release, "anonymize_paired_fastq", observed_anonymize)
+
+    package_read_release(
+        load_release_spec(spec_path),
+        source,
+        answers,
+        tmp_path / "output",
+    )
+
+    assert len(thread_ids) > 1

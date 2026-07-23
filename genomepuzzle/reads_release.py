@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import shutil
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Mapping
 
@@ -70,8 +72,9 @@ def package_read_release(
             answers_by_source.setdefault(
                 sample_spec.source_id, sample_spec.expected_answers
             )
-    artifacts = []
-    for sample in resolve_release_samples(spec, id_salt=id_salt):
+    samples = list(resolve_release_samples(spec, id_salt=id_salt))
+
+    def package_sample(sample) -> ReleaseArtifactSample:
         if sample.source_id not in answers_by_source:
             raise ValueError("expected answers missing source {0}".format(sample.source_id))
         source_r1 = _find_asset(
@@ -125,21 +128,24 @@ def package_read_release(
             files["long_reads"] = str(output_long)
             provenance["source_long_reads"] = str(source_long)
             provenance["source_long_reads_sha256"] = sha256_file(source_long)
-        artifacts.append(
-            ReleaseArtifactSample(
-                sample_id=sample.sample_id,
-                source_id=sample.source_id,
-                random_seed=sample.random_seed,
-                files=files,
-                expected_answers=answers_by_source[sample.source_id],
-                implant=sample.implant,
-                implant_parameters=sample.implant_parameters,
-                public_metadata={"format": "paired FASTQ"}
-                if spec.exercise == "assembly"
-                else {"format": "paired short-read and long-read FASTQ"},
-                private_provenance=provenance,
-            )
+        return ReleaseArtifactSample(
+            sample_id=sample.sample_id,
+            source_id=sample.source_id,
+            random_seed=sample.random_seed,
+            files=files,
+            expected_answers=answers_by_source[sample.source_id],
+            implant=sample.implant,
+            implant_parameters=sample.implant_parameters,
+            public_metadata={"format": "paired FASTQ"}
+            if spec.exercise == "assembly"
+            else {"format": "paired short-read and long-read FASTQ"},
+            private_provenance=provenance,
         )
+
+    allocated_cpus = int(os.environ.get("SLURM_CPUS_PER_TASK", "1"))
+    workers = min(4, max(1, allocated_cpus), len(samples))
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        artifacts = list(executor.map(package_sample, samples))
     _write_sample_sheet(destination / "public" / "sample_sheet.csv", artifacts)
     manifests = write_release_manifests(
         destination,
