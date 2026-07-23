@@ -139,12 +139,10 @@ def calibrate_release(
         raise ValueError("pilot calibration requires an assembly, hybrid or outbreak release")
 
     output = root / "build" / "calibration"
-    if output.exists():
-        shutil.rmtree(output)
     assemblies = output / "assemblies"
     mash_output = output / "mash"
-    assemblies.mkdir(parents=True)
-    mash_output.mkdir()
+    assemblies.mkdir(parents=True, exist_ok=True)
+    mash_output.mkdir(exist_ok=True)
     commands: list[str] = []
     sample_truth = {item["sample_id"]: item for item in provenance["samples"]}
     requested = set(sample_ids)
@@ -173,7 +171,7 @@ def calibrate_release(
 
     mash = require_tool("mash")
     reference_sketch = mash_output / "sources"
-    if source_paths:
+    if source_paths and not Path(str(reference_sketch) + ".msh").is_file():
         _run(
             [mash, "sketch", "-o", str(reference_sketch), *source_paths],
             commands,
@@ -219,40 +217,55 @@ def calibrate_release(
                 report["mash_screen"] = str(screen_path.relative_to(root))
 
             assembly_dir = assemblies / sample_id
-            command = [
-                require_tool("spades.py"),
-                "--careful",
-                "-t",
-                str(threads),
-                "-m",
-                str(memory_gb),
-                "-1",
-                str(paths["read_1"]),
-                "-2",
-                str(paths["read_2"]),
-                "-o",
-                str(assembly_dir),
-            ]
-            if "long_reads" in paths:
-                command.extend(["--nanopore", str(paths["long_reads"])])
-            try:
-                _run(command, commands)
-            except subprocess.CalledProcessError as exc:
-                report["assembly_error"] = {
-                    "return_code": exc.returncode,
-                    "command": shlex.join(str(value) for value in exc.cmd),
-                }
-                sample_reports.append(report)
-                continue
             contig_path = assembly_dir / "contigs.fasta"
+            if contig_path.is_file():
+                report["assembly_reused"] = True
+            else:
+                if assembly_dir.exists():
+                    shutil.rmtree(assembly_dir)
+                command = [
+                    require_tool("spades.py"),
+                    "--careful",
+                    "-t",
+                    str(threads),
+                    "-m",
+                    str(memory_gb),
+                    "-1",
+                    str(paths["read_1"]),
+                    "-2",
+                    str(paths["read_2"]),
+                    "-o",
+                    str(assembly_dir),
+                ]
+                if "long_reads" in paths:
+                    command.extend(["--nanopore", str(paths["long_reads"])])
+                try:
+                    _run(command, commands)
+                except subprocess.CalledProcessError as exc:
+                    report["assembly_error"] = {
+                        "return_code": exc.returncode,
+                        "command": shlex.join(str(value) for value in exc.cmd),
+                    }
+                    sample_reports.append(report)
+                    continue
             report["assembly_metrics"] = fasta_metrics(contig_path)
             report["assembly"] = str(contig_path.relative_to(root))
             contigs.append(str(contig_path))
         sample_reports.append(report)
 
     kleborate_output = output / "kleborate"
+    if kleborate_output.exists():
+        shutil.rmtree(kleborate_output)
     _run(
-        [require_tool("kleborate"), "-a", *contigs, "-o", str(kleborate_output)],
+        [
+            require_tool("kleborate"),
+            "-a",
+            *contigs,
+            "-o",
+            str(kleborate_output),
+            "-p",
+            "kpsc",
+        ],
         commands,
     )
     tree_path: Path | None = None
