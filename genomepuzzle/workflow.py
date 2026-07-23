@@ -19,6 +19,20 @@ from genomepuzzle.slurm import SlurmResources, build_stage_sbatch_script, submit
 PLAN_SCHEMA_VERSION = "1.0"
 TERMINAL_SUCCESS = {"completed"}
 RETRYABLE = {"planned", "failed", "cancelled"}
+SCHEDULER_STATUS = {
+    "PENDING": "submitted",
+    "CONFIGURING": "submitted",
+    "RUNNING": "running",
+    "COMPLETING": "running",
+    "COMPLETED": "completed",
+    "CANCELLED": "cancelled",
+    "FAILED": "failed",
+    "TIMEOUT": "failed",
+    "OUT_OF_MEMORY": "failed",
+    "NODE_FAIL": "failed",
+    "BOOT_FAIL": "failed",
+    "PREEMPTED": "failed",
+}
 
 
 @dataclass(frozen=True)
@@ -268,6 +282,46 @@ def _write_stage(plan: Mapping[str, Any], stage: Mapping[str, Any]) -> None:
     json_dump(_stage_path(plan, str(stage["stage"])), dict(stage))
 
 
+def _scheduler_state(job_id: str) -> str | None:
+    """Return a normalised stage status from SLURM accounting when available."""
+
+    try:
+        result = subprocess.run(
+            [
+                "sacct",
+                "-j",
+                str(job_id),
+                "--format=State",
+                "-n",
+                "-X",
+                "-P",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    for line in result.stdout.splitlines():
+        raw = line.strip().split()[0] if line.strip() else ""
+        raw = raw.split("+", 1)[0]
+        if raw in SCHEDULER_STATUS:
+            return SCHEDULER_STATUS[raw]
+    return None
+
+
+def _reconcile_stage(plan: Mapping[str, Any], stage: dict[str, Any]) -> dict[str, Any]:
+    job_id = stage.get("job_id")
+    if not job_id or stage["status"] in TERMINAL_SUCCESS:
+        return stage
+    scheduler_status = _scheduler_state(str(job_id))
+    if scheduler_status and scheduler_status != stage["status"]:
+        stage["status"] = scheduler_status
+        stage["scheduler_checked_at"] = utc_now()
+        _write_stage(plan, stage)
+    return stage
+
+
 def submit_plan(
     plan_path: str | os.PathLike[str], *, retry: bool = False
 ) -> dict[str, str]:
@@ -278,10 +332,10 @@ def submit_plan(
     known_jobs: dict[str, str] = {}
     for stage_definition in plan["stages"]:
         name = stage_definition["name"]
-        state = _read_stage(plan, name)
+        state = _reconcile_stage(plan, _read_stage(plan, name))
         if state["status"] in TERMINAL_SUCCESS:
             continue
-        if state["status"] not in RETRYABLE and not retry:
+        if state["status"] not in RETRYABLE:
             known = state.get("job_id")
             if known:
                 known_jobs[name] = known
@@ -289,7 +343,9 @@ def submit_plan(
         dependency_jobs = []
         blocked = False
         for dependency in stage_definition["dependencies"]:
-            dependency_state = _read_stage(plan, dependency)
+            dependency_state = _reconcile_stage(
+                plan, _read_stage(plan, dependency)
+            )
             if dependency_state["status"] in TERMINAL_SUCCESS:
                 continue
             job_id = submitted.get(dependency) or known_jobs.get(dependency) or dependency_state.get("job_id")
@@ -325,7 +381,11 @@ def run_stage(plan_path: str | os.PathLike[str], stage_name: str) -> None:
     definition = definitions[stage_name]
     state = _read_stage(plan, stage_name)
     prior_status = state["status"]
-    if stage_name == "generate" and prior_status == "failed":
+    if (
+        stage_name == "generate"
+        and len(state.get("attempts", [])) > 1
+        and prior_status != "completed"
+    ):
         root = Path(plan["output_dir"]).resolve()
         for name in ("public", "private"):
             partial_dir = root / name
@@ -364,4 +424,7 @@ def run_stage(plan_path: str | os.PathLike[str], stage_name: str) -> None:
 
 def workflow_status(plan_path: str | os.PathLike[str]) -> list[dict[str, Any]]:
     plan = load_plan(plan_path)
-    return [_read_stage(plan, stage["name"]) for stage in plan["stages"]]
+    return [
+        _reconcile_stage(plan, _read_stage(plan, stage["name"]))
+        for stage in plan["stages"]
+    ]

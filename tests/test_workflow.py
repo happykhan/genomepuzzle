@@ -65,10 +65,61 @@ def test_submit_plan_records_afterok_dependencies(tmp_path, monkeypatch):
         return str(100 + len(calls))
 
     monkeypatch.setattr("genomepuzzle.workflow.submit_sbatch_script", fake_submit)
+    monkeypatch.setattr(
+        "genomepuzzle.workflow._scheduler_state", lambda job_id: "submitted"
+    )
     jobs = submit_plan(plan_path)
 
     assert jobs == {"generate": "101", "validate": "102"}
     assert calls == [("generate.sbatch", ()), ("validate.sbatch", ("101",))]
+
+
+def test_resume_does_not_duplicate_a_running_job(tmp_path, monkeypatch):
+    source = tmp_path / "sources"
+    source.mkdir()
+    spec = tmp_path / "release.toml"
+    _spec(spec, source)
+    output = tmp_path / "output"
+    plan_path = write_release_plan(
+        build_release_plan(spec, output, repo_dir=Path(__file__).parents[1])
+    )
+    stage_path = output / "build/stages/generate.json"
+    stage = json.loads(stage_path.read_text())
+    stage.update({"status": "running", "job_id": "123"})
+    stage_path.write_text(json.dumps(stage))
+    validation_path = output / "build/stages/validate.json"
+    validation = json.loads(validation_path.read_text())
+    validation.update({"status": "submitted", "job_id": "124"})
+    validation_path.write_text(json.dumps(validation))
+    monkeypatch.setattr(
+        "genomepuzzle.workflow._scheduler_state", lambda job_id: "running"
+    )
+    monkeypatch.setattr(
+        "genomepuzzle.workflow.submit_sbatch_script",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("duplicate")),
+    )
+
+    assert submit_plan(plan_path, retry=True) == {}
+
+
+def test_status_reconciles_cancelled_slurm_job(tmp_path, monkeypatch):
+    source = tmp_path / "sources"
+    source.mkdir()
+    spec = tmp_path / "release.toml"
+    _spec(spec, source)
+    output = tmp_path / "output"
+    plan_path = write_release_plan(
+        build_release_plan(spec, output, repo_dir=Path(__file__).parents[1])
+    )
+    stage_path = output / "build/stages/generate.json"
+    stage = json.loads(stage_path.read_text())
+    stage.update({"status": "running", "job_id": "123"})
+    stage_path.write_text(json.dumps(stage))
+    monkeypatch.setattr(
+        "genomepuzzle.workflow._scheduler_state", lambda job_id: "cancelled"
+    )
+
+    assert workflow_status(plan_path)[0]["status"] == "cancelled"
 
 
 def test_outbreak_plan_uses_native_generator_when_base_genome_is_declared(tmp_path):
