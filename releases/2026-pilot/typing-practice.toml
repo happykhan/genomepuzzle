@@ -1,0 +1,47 @@
+schema_version = "1.0"
+release_id = "2026-pilot-typing-practice"
+exercise = "typing"
+mode = "practice"
+master_seed = 4702026
+
+# Practice identifiers are deliberately frozen in this public specification.
+# Challenge releases omit public_id and use the private ID salt instead.
+
+[[samples]]
+source_id = "GCA_902156115.1"
+public_id = "Sample_TP001"
+
+[[samples]]
+source_id = "GCA_902155925.1"
+public_id = "Sample_TP002"
+
+[[samples]]
+source_id = "GCA_902155885.1"
+public_id = "Sample_TP003"
+
+[[samples]]
+source_id = "GCA_902156075.1"
+public_id = "Sample_TP004"
+
+[[samples]]
+source_id = "GCA_902156825.1"
+public_id = "Sample_TP005"
+
+[[samples]]
+source_id = "GCA_902155945.1"
+public_id = "Sample_TP006"
+
+[[samples]]
+source_id = "GCA_902156185.1"
+public_id = "Sample_TP007"
+implant = "FRAGMENTED"
+[samples.implant_parameters]
+fragment_size = 1000
+
+[[samples]]
+source_id = "GCA_902156085.1"
+public_id = "Sample_TP008"
+implant = "MIXED_CONTIGS"
+[samples.implant_parameters]
+contaminant_source_id = "GCA_902156075.1"
+contamination_fraction = 0.12

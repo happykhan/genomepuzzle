@@ -2,6 +2,7 @@
 Typer-based command-line interface for genomepuzzle.
 """
 
+import json
 import logging
 import os
 import sys
@@ -17,9 +18,14 @@ from genomepuzzle.long_qc import (
     write_qc_outputs,
     write_report_outputs,
 )
+from genomepuzzle.outbreak import build_outbreak_release
 from genomepuzzle.rapid import rapid
+from genomepuzzle.reads_release import load_expected_answers, package_read_release
+from genomepuzzle.release import load_release_spec, resolve_release_samples
 from genomepuzzle.simulate_reads import simulate_reads
 from genomepuzzle.slurm import build_hybrid_sbatch_script, submit_sbatch_script
+from genomepuzzle.sources import fetch_assembly_sources
+from genomepuzzle.typing import build_typing_release, run_kleborate
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -76,9 +82,261 @@ if typer is not None:
         rich_markup_mode="rich",
         help="Legacy compatibility commands that should be phased out.",
     )
+    release_app = typer.Typer(
+        rich_markup_mode="rich",
+        help="Validate and resolve versioned assessment release specifications.",
+    )
     app.add_typer(short_app, name="short")
     app.add_typer(long_app, name="long")
+    app.add_typer(release_app, name="release")
     app.add_typer(legacy_app, name="legacy")
+
+    @release_app.command("validate-spec")
+    def validate_release_spec_command(
+        spec: str = typer.Option(
+            ...,
+            "--spec",
+            help="Versioned TOML release specification.",
+        ),
+        id_salt: str = typer.Option(
+            None,
+            "--id-salt",
+            help=(
+                "Private ID salt. If omitted, the environment variable named "
+                "by id_salt_env in the specification is used."
+            ),
+        ),
+        output_json: str = typer.Option(
+            None,
+            "--output-json",
+            help="Optional private path to write resolved source-to-public mappings.",
+        ),
+    ):
+        release_spec = load_release_spec(spec)
+        try:
+            resolved = resolve_release_samples(release_spec, id_salt=id_salt)
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc))
+        implant_counts = {}
+        for sample in resolved:
+            implant_counts[sample.implant] = implant_counts.get(sample.implant, 0) + 1
+        _print_run_summary(
+            "release validate-spec",
+            [
+                ("release_id", release_spec.release_id),
+                ("exercise", release_spec.exercise),
+                ("mode", release_spec.mode),
+                ("samples", len(resolved)),
+                (
+                    "implants",
+                    ", ".join(
+                        "{0}={1}".format(key, implant_counts[key])
+                        for key in sorted(implant_counts)
+                    ),
+                ),
+            ],
+        )
+        if output_json:
+            output_path = os.path.abspath(output_json)
+            output_parent = os.path.dirname(output_path)
+            if output_parent:
+                os.makedirs(output_parent, exist_ok=True)
+            with open(output_path, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "schema_version": release_spec.schema_version,
+                        "release_id": release_spec.release_id,
+                        "exercise": release_spec.exercise,
+                        "mode": release_spec.mode,
+                        "samples": [
+                            {
+                                "source_id": sample.source_id,
+                                "identity_key": sample.identity_key,
+                                "sample_id": sample.sample_id,
+                                "random_seed": sample.random_seed,
+                                "implant": sample.implant,
+                                "implant_parameters": dict(
+                                    sample.implant_parameters
+                                ),
+                            }
+                            for sample in resolved
+                        ],
+                    },
+                    handle,
+                    indent=2,
+                    sort_keys=True,
+                )
+                handle.write("\n")
+            if console:
+                console.print(
+                    "Wrote private resolved mapping: [bold]{0}[/bold]".format(
+                        output_path
+                    )
+                )
+
+    @release_app.command("build-typing")
+    def build_typing_release_command(
+        spec: str = typer.Option(..., "--spec", help="Typing release TOML."),
+        source_dir: str = typer.Option(
+            ..., "--source-dir", help="Directory containing source FASTA files."
+        ),
+        output_dir: str = typer.Option(
+            ..., "--output-dir", help="New directory for the release package."
+        ),
+        id_salt: str = typer.Option(
+            None,
+            "--id-salt",
+            help="Private ID salt; otherwise use the specification environment variable.",
+        ),
+        skip_analysis: bool = typer.Option(
+            False,
+            "--skip-analysis",
+            help="Prepare files with pending answers instead of running Kleborate.",
+        ),
+        kleborate_executable: str = typer.Option(
+            "kleborate",
+            "--kleborate-executable",
+            help="Pinned Kleborate executable or wrapper.",
+        ),
+    ):
+        release_spec = load_release_spec(spec)
+        analyser = None
+        if not skip_analysis:
+            analyser = lambda path: run_kleborate(path, kleborate_executable)
+        manifests = build_typing_release(
+            release_spec,
+            source_dir,
+            output_dir,
+            id_salt=id_salt,
+            analyser=analyser,
+        )
+        _print_run_summary(
+            "release build-typing",
+            [
+                ("release_id", release_spec.release_id),
+                ("samples", len(release_spec.samples)),
+                ("output", os.path.abspath(output_dir)),
+                ("analysis", "pending" if skip_analysis else "Kleborate"),
+                ("public_manifest", manifests["public_manifest"]),
+            ],
+        )
+
+    @release_app.command("fetch-assemblies")
+    def fetch_release_assemblies_command(
+        spec: str = typer.Option(
+            ..., "--spec", help="Release TOML containing NCBI assembly accessions."
+        ),
+        output_dir: str = typer.Option(
+            ..., "--output-dir", help="Assembly source cache directory."
+        ),
+        datasets_executable: str = typer.Option(
+            "datasets",
+            "--datasets-executable",
+            help="NCBI datasets executable from the managed environment.",
+        ),
+        refresh: bool = typer.Option(
+            False,
+            "--refresh",
+            help="Download and atomically replace already-cached source FASTAs.",
+        ),
+    ):
+        release_spec = load_release_spec(spec)
+        manifest = fetch_assembly_sources(
+            release_spec,
+            output_dir,
+            datasets_executable=datasets_executable,
+            refresh=refresh,
+        )
+        _print_run_summary(
+            "release fetch-assemblies",
+            [
+                ("release_id", release_spec.release_id),
+                ("sources", len(release_spec.samples)),
+                ("output", os.path.abspath(output_dir)),
+                ("source_manifest", manifest),
+            ],
+        )
+
+    @release_app.command("build-outbreak")
+    def build_outbreak_release_command(
+        spec: str = typer.Option(..., "--spec", help="Outbreak release TOML."),
+        source_dir: str = typer.Option(
+            ..., "--source-dir", help="Directory containing TreeToReads FASTQ files."
+        ),
+        metadata_csv: str = typer.Option(
+            ...,
+            "--metadata",
+            help="Frozen outbreak metadata and private cluster truth CSV.",
+        ),
+        output_dir: str = typer.Option(
+            ..., "--output-dir", help="New directory for the release package."
+        ),
+        id_salt: str = typer.Option(
+            None,
+            "--id-salt",
+            help="Private ID salt; otherwise use the specification environment variable.",
+        ),
+    ):
+        release_spec = load_release_spec(spec)
+        manifests = build_outbreak_release(
+            release_spec,
+            source_dir,
+            metadata_csv,
+            output_dir,
+            id_salt=id_salt,
+        )
+        _print_run_summary(
+            "release build-outbreak",
+            [
+                ("release_id", release_spec.release_id),
+                ("samples", len(release_spec.samples)),
+                ("output", os.path.abspath(output_dir)),
+                ("public_manifest", manifests["public_manifest"]),
+            ],
+        )
+
+    @release_app.command("package-reads")
+    def package_read_release_command(
+        spec: str = typer.Option(
+            ..., "--spec", help="Assembly or hybrid release TOML."
+        ),
+        source_dir: str = typer.Option(
+            ...,
+            "--source-dir",
+            help="Directory containing final implanted FASTQ files.",
+        ),
+        expected_answers: str = typer.Option(
+            ...,
+            "--expected-answers",
+            help="Private JSON answer object keyed by source ID.",
+        ),
+        output_dir: str = typer.Option(
+            ..., "--output-dir", help="New directory for the release package."
+        ),
+        id_salt: str = typer.Option(
+            None,
+            "--id-salt",
+            help="Private ID salt; otherwise use the specification environment variable.",
+        ),
+    ):
+        release_spec = load_release_spec(spec)
+        manifests = package_read_release(
+            release_spec,
+            source_dir,
+            load_expected_answers(expected_answers),
+            output_dir,
+            id_salt=id_salt,
+        )
+        _print_run_summary(
+            "release package-reads",
+            [
+                ("release_id", release_spec.release_id),
+                ("exercise", release_spec.exercise),
+                ("samples", len(release_spec.samples)),
+                ("output", os.path.abspath(output_dir)),
+                ("public_manifest", manifests["public_manifest"]),
+            ],
+        )
 
     @app.command("simulate")
     @short_app.command("simulate")
