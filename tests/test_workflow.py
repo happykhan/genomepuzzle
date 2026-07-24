@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from genomepuzzle.workflow import (
     build_release_plan,
     run_stage,
@@ -183,7 +185,32 @@ def test_run_stage_freezes_planned_git_commit_in_environment(tmp_path, monkeypat
     def fake_run(command, **kwargs):
         calls.append((command, kwargs))
 
+    monkeypatch.setattr(
+        "genomepuzzle.workflow._git_commit", lambda _repo: plan["git_commit"]
+    )
     monkeypatch.setattr("genomepuzzle.workflow.subprocess.run", fake_run)
     run_stage(plan_path, "generate")
 
     assert calls[0][1]["env"]["GENOMEPUZZLE_PLANNED_GIT_COMMIT"] == plan["git_commit"]
+
+
+def test_run_stage_rejects_a_different_repository_commit(tmp_path, monkeypatch):
+    source = tmp_path / "sources"
+    source.mkdir()
+    spec = tmp_path / "release.toml"
+    _spec(spec, source)
+    output = tmp_path / "output"
+    plan_path = write_release_plan(
+        build_release_plan(spec, output, repo_dir=Path(__file__).parents[1])
+    )
+    plan = json.loads(plan_path.read_text())
+    monkeypatch.setattr(
+        "genomepuzzle.workflow._git_commit", lambda _repo: "different-commit"
+    )
+
+    with pytest.raises(RuntimeError, match="create a new plan"):
+        run_stage(plan_path, "generate")
+
+    state = json.loads((output / "build" / "stages" / "generate.json").read_text())
+    assert state["status"] == "failed"
+    assert plan["git_commit"] in state["error"]

@@ -463,6 +463,14 @@ def run_stage(plan_path: str | os.PathLike[str], stage_name: str) -> None:
     }
     _write_stage(plan, state)
     try:
+        actual_commit = _git_commit(Path(plan["repo_dir"]))
+        if actual_commit != plan["git_commit"]:
+            raise RuntimeError(
+                "workflow plan was created at Git commit {0}, but the repository "
+                "is now at {1}; create a new plan before running this stage".format(
+                    plan["git_commit"], actual_commit
+                )
+            )
         stage_environment = os.environ.copy()
         stage_environment[PLANNED_GIT_COMMIT_ENV] = plan["git_commit"]
         subprocess.run(

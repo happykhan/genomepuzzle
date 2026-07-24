@@ -54,6 +54,12 @@ The `build/` directory contains:
 
 Mutable `build/` state is excluded from the final bundle digest.
 
+Every stage verifies that the repository is still at the Git commit frozen in
+`plan.json` before executing its command. If code changes after planning, the
+stage fails before generation or validation and the operator must create a new
+plan. This prevents a bundle from claiming provenance from code it did not
+actually run.
+
 ## Default resources
 
 | Exercise/stage | CPUs | Memory | Time |
