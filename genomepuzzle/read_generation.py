@@ -8,7 +8,10 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from genomepuzzle.contract import failure_reason_for_implant
+from genomepuzzle.contract import (
+    failure_reason_for_implant,
+    retained_read_pairs_for_fault,
+)
 from genomepuzzle.create_error import (
     concatenate_fastqs,
     count_reads,
@@ -33,6 +36,7 @@ ASSEMBLY_IMPLANTS = {
     "MISSING_R1",
     "MISSING_R2",
     "TEN_READ_PAIRS",
+    "TRUNCATE_TO_READ_PAIRS",
     "TRUNCATED_R1_TO_10_READS",
     "TRUNCATED_R2_TO_10_READS",
     "WRONG_ORGANISM",
@@ -47,6 +51,7 @@ HYBRID_IMPLANTS = {
     "MISSING_R1",
     "MISSING_R2",
     "TEN_READ_PAIRS",
+    "TRUNCATE_TO_READ_PAIRS",
     "TRUNCATED_R1_TO_10_READS",
     "TRUNCATED_R2_TO_10_READS",
     "MISSING_LONG_READS",
@@ -315,16 +320,19 @@ def _generate_sample(
         )
         achieved["read_fraction"] = fraction
         achieved["expected_short_coverage"] = round(achieved_coverage, 4)
-    elif sample.implant == "TEN_READ_PAIRS":
+    elif sample.implant in {"TEN_READ_PAIRS", "TRUNCATE_TO_READ_PAIRS"}:
+        retained_pairs = retained_read_pairs_for_fault(
+            sample.implant, sample.implant_parameters
+        )
         subsample_paired_read_by_count(
             str(base_r1),
             str(base_r2),
             str(final_r1),
             str(final_r2),
-            num_reads=10,
+            num_reads=retained_pairs,
             random_seed=sample.random_seed,
         )
-        achieved["short_read_pairs"] = 10
+        achieved["short_read_pairs"] = retained_pairs
     elif sample.implant in {
         "TRUNCATED_R1_TO_10_READS",
         "TRUNCATED_R2_TO_10_READS",

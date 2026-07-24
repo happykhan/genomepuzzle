@@ -49,7 +49,9 @@ implant = "MISSING_R2"
 
 [[samples]]
 source_id = "challenge-tip-17"
-implant = "TEN_READ_PAIRS"
+implant = "TRUNCATE_TO_READ_PAIRS"
+[samples.implant_parameters]
+retained_read_pairs = 83
 
 [[samples]]
 source_id = "challenge-tip-18"

@@ -31,10 +31,11 @@ manifest retains the exact `fault_type` and achieved evidence:
 ```yaml
 qc_status: FAIL
 failure_reason: TOO_FEW_READS
-fault_type: TRUNCATED_R2_TO_10_READS
+fault_type: TRUNCATE_TO_READ_PAIRS
+parameters:
+  retained_read_pairs: 37
 validation:
-  observed_r1_reads: 100000
-  observed_r2_reads: 10
+  observed_read_pairs: 37
 ```
 
 Several precise implants may map to one reportable reason. This keeps the
@@ -51,7 +52,7 @@ proficiency question.
 | `NONE` | All | Sample passes QC |
 | `EMPTY_FILE` | All | A required supplied sequence file contains no records |
 | `MISSING_MATE` | Assembly, hybrid, outbreak | One paired-read role is absent |
-| `TOO_FEW_READS` | Assembly, hybrid, outbreak | An absurdly small short-read dataset, normally about ten pairs or a severely truncated mate |
+| `TOO_FEW_READS` | Assembly, hybrid, outbreak | An absurdly small short-read dataset containing no more than 100 pairs, or a severely truncated mate |
 | `LOW_COVERAGE` | Assembly, hybrid, outbreak | Measured short-read coverage is catastrophically low, normally no more than approximately 1× |
 | `MISSING_LONG_READS` | Hybrid | The long-read role is absent |
 | `TOO_FEW_LONG_READS` | Hybrid | Only an absurdly small number of long reads is supplied |

@@ -46,7 +46,9 @@ species = "Klebsiella pneumoniae"
 
 [[samples]]
 source_id = "GCA_902156185.1"
-implant = "TEN_READ_PAIRS"
+implant = "TRUNCATE_TO_READ_PAIRS"
+[samples.implant_parameters]
+retained_read_pairs = 41
 [samples.expected_answers]
 species = "Klebsiella pneumoniae"
 

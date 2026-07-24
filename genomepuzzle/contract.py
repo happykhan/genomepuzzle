@@ -122,6 +122,7 @@ IMPLANT_FAILURE_REASONS: dict[str, dict[str, str]] = {
         "MISSING_R1": "MISSING_MATE",
         "MISSING_R2": "MISSING_MATE",
         "TEN_READ_PAIRS": "TOO_FEW_READS",
+        "TRUNCATE_TO_READ_PAIRS": "TOO_FEW_READS",
         "TRUNCATED_R1_TO_10_READS": "TOO_FEW_READS",
         "TRUNCATED_R2_TO_10_READS": "TOO_FEW_READS",
         "LOW_COVERAGE": "LOW_COVERAGE",
@@ -136,6 +137,7 @@ IMPLANT_FAILURE_REASONS: dict[str, dict[str, str]] = {
         "MISSING_R1": "MISSING_MATE",
         "MISSING_R2": "MISSING_MATE",
         "TEN_READ_PAIRS": "TOO_FEW_READS",
+        "TRUNCATE_TO_READ_PAIRS": "TOO_FEW_READS",
         "TRUNCATED_R1_TO_10_READS": "TOO_FEW_READS",
         "TRUNCATED_R2_TO_10_READS": "TOO_FEW_READS",
         "LOW_COVERAGE": "LOW_COVERAGE",
@@ -155,6 +157,7 @@ IMPLANT_FAILURE_REASONS: dict[str, dict[str, str]] = {
         "MISSING_R1": "MISSING_MATE",
         "MISSING_R2": "MISSING_MATE",
         "TEN_READ_PAIRS": "TOO_FEW_READS",
+        "TRUNCATE_TO_READ_PAIRS": "TOO_FEW_READS",
         "TRUNCATED_R1_TO_10_READS": "TOO_FEW_READS",
         "TRUNCATED_R2_TO_10_READS": "TOO_FEW_READS",
         "LOW_COVERAGE": "LOW_COVERAGE",
@@ -181,6 +184,28 @@ def failure_reason_for_implant(exercise: str, implant: str) -> str:
     if reason not in FAILURE_REASONS_BY_EXERCISE[exercise]:
         raise RuntimeError("implant failure mapping is outside the exercise vocabulary")
     return reason
+
+
+def retained_read_pairs_for_fault(
+    implant: str, parameters: Mapping[str, Any]
+) -> int:
+    """Resolve an explicit, categorically tiny paired-read fault size."""
+
+    normalized = implant.strip().upper()
+    if normalized == "TEN_READ_PAIRS":
+        return 10
+    if normalized != "TRUNCATE_TO_READ_PAIRS":
+        raise ValueError("fault does not truncate a complete paired-read dataset")
+    value = parameters.get("retained_read_pairs")
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(
+            "TRUNCATE_TO_READ_PAIRS requires integer retained_read_pairs"
+        )
+    if not 1 <= value <= 100:
+        raise ValueError(
+            "TRUNCATE_TO_READ_PAIRS retained_read_pairs must be between 1 and 100"
+        )
+    return value
 
 
 def expected_participant_roles(exercise: str, fault_type: str) -> set[str]:

@@ -127,10 +127,11 @@ contamination_fraction = 0.50
 ### Short-read assembly
 
 ART creates paired reads directly from the frozen reference assembly.
-Supported catastrophic faults include `LOW_COVERAGE`, `TEN_READ_PAIRS`,
-zero-byte or missing mates, `CONTAMINATED` and `WRONG_ORGANISM`. Every fault
-must materialise its exact requested operation; silent fallback to `NORMAL`
-is forbidden.
+Supported catastrophic faults include `LOW_COVERAGE`,
+`TRUNCATE_TO_READ_PAIRS` with an explicit 1–100-pair count, zero-byte or
+missing mates, `CONTAMINATED` and `WRONG_ORGANISM`. `TEN_READ_PAIRS` remains a
+backward-compatible shorthand. Every fault must materialise its exact
+requested operation; silent fallback to `NORMAL` is forbidden.
 
 ### Hybrid assembly
 

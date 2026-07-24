@@ -8,6 +8,7 @@ from genomepuzzle.contract import (
     exercise_contract,
     failure_reason_for_implant,
     inspect_release,
+    retained_read_pairs_for_fault,
     validate_release_bundle,
 )
 from genomepuzzle.release import load_release_spec
@@ -163,3 +164,19 @@ def test_private_faults_map_to_small_public_vocabulary():
     assert failure_reason_for_implant("outbreak", "NORMAL") == "NONE"
     with pytest.raises(ValueError, match="no participant failure reason"):
         failure_reason_for_implant("assembly", "SUBTLE_MATE_COUNT_DIFFERENCE")
+
+
+def test_catastrophic_read_count_fault_is_explicit_and_bounded():
+    assert retained_read_pairs_for_fault("TEN_READ_PAIRS", {}) == 10
+    assert (
+        retained_read_pairs_for_fault(
+            "TRUNCATE_TO_READ_PAIRS", {"retained_read_pairs": 37}
+        )
+        == 37
+    )
+    with pytest.raises(ValueError, match="requires integer"):
+        retained_read_pairs_for_fault("TRUNCATE_TO_READ_PAIRS", {})
+    with pytest.raises(ValueError, match="between 1 and 100"):
+        retained_read_pairs_for_fault(
+            "TRUNCATE_TO_READ_PAIRS", {"retained_read_pairs": 101}
+        )

@@ -61,6 +61,52 @@ species = "Klebsiella pneumoniae"
     assert "source-a" not in header
 
 
+def test_too_few_reads_uses_explicit_private_pair_count(tmp_path, monkeypatch):
+    source = tmp_path / "sources"
+    source.mkdir()
+    (source / "source-a.fasta").write_text(">source\n" + "A" * 500 + "\n")
+    spec_path = tmp_path / "assembly.toml"
+    spec_path.write_text(
+        """
+release_id = "assembly-truncated"
+exercise = "assembly"
+mode = "practice"
+
+[[samples]]
+source_id = "source-a"
+public_id = "Sample_a"
+implant = "TRUNCATE_TO_READ_PAIRS"
+[samples.implant_parameters]
+retained_read_pairs = 7
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "genomepuzzle.read_generation._simulate_short_reads", _fake_short
+    )
+
+    output = tmp_path / "release"
+    generate_read_release(load_release_spec(spec_path), source, output)
+    provenance = json.loads((output / "private/provenance.json").read_text())
+    fault = provenance["samples"][0]["fault"]
+    validation = provenance["samples"][0]["provenance"]["validation"]
+
+    assert fault == {
+        "failure_reason": "TOO_FEW_READS",
+        "fault_type": "TRUNCATE_TO_READ_PAIRS",
+        "parameters": {"retained_read_pairs": 7},
+    }
+    assert validation["short_read_pairs"] == 7
+    for mate in ("R1", "R2"):
+        with gzip.open(
+            output / "public/files/Sample_a_{0}.fastq.gz".format(mate), "rt"
+        ) as handle:
+            assert sum(1 for _line in handle) == 28
+
+
 def test_slurm_allocation_generates_independent_samples_concurrently(
     tmp_path, monkeypatch
 ):

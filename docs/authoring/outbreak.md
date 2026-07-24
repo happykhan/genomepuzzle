@@ -48,7 +48,8 @@ the organiser's arbitrary label names.
 | Implant | Important parameters | Intended signal |
 | --- | --- | --- |
 | `LOW_COVERAGE` | `read_fraction` | An isolate unsuitable for confident placement |
-| `TEN_READ_PAIRS` | — | Exactly ten paired reads |
+| `TRUNCATE_TO_READ_PAIRS` | `retained_read_pairs` | An explicit 1–100 paired reads |
+| `TEN_READ_PAIRS` | — | Backward-compatible shorthand for exactly ten pairs |
 | `ZERO_BYTE_R1`, `ZERO_BYTE_R2` | — | A required mate is a literal zero-byte file |
 | `MISSING_R1`, `MISSING_R2` | — | A required mate is absent |
 | `CONTAMINATED` | `contaminant_source_id`, `contamination_fraction` | A 30–90% different-species mixture |

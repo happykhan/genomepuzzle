@@ -30,4 +30,6 @@ implant = "ZERO_BYTE_R2"
 [[samples]]
 source_id = "practice-tip-06"
 public_id = "Sample_OP006"
-implant = "TEN_READ_PAIRS"
+implant = "TRUNCATE_TO_READ_PAIRS"
+[samples.implant_parameters]
+retained_read_pairs = 23

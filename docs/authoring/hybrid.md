@@ -9,7 +9,8 @@ long-read data or disagreement between evidence sources.
 | Implant | Important parameters | Intended signal |
 | --- | --- | --- |
 | `LOW_SHORT_COVERAGE` | `read_fraction` | No more than approximately 1× Illumina depth |
-| `TEN_READ_PAIRS` | — | Exactly ten short-read pairs |
+| `TRUNCATE_TO_READ_PAIRS` | `retained_read_pairs` | An explicit 1–100 short-read pairs |
+| `TEN_READ_PAIRS` | — | Backward-compatible shorthand for exactly ten pairs |
 | `MISSING_LONG_READS` | — | Long-read role is absent |
 | `ZERO_BYTE_LONG_READS` | — | Long-read role is a literal zero-byte file |
 | `TEN_LONG_READS` | — | Exactly ten long reads |

@@ -18,7 +18,11 @@ from genomepuzzle.release import (
     sha256_file,
     write_release_manifests,
 )
-from genomepuzzle.contract import complete_release, failure_reason_for_implant
+from genomepuzzle.contract import (
+    complete_release,
+    failure_reason_for_implant,
+    retained_read_pairs_for_fault,
+)
 from genomepuzzle.sequence_io import (
     anonymize_paired_fastq_in_place,
     anonymize_single_fastq_in_place,
@@ -37,6 +41,7 @@ OUTBREAK_IMPLANTS = {
     "MISSING_R1",
     "MISSING_R2",
     "TEN_READ_PAIRS",
+    "TRUNCATE_TO_READ_PAIRS",
     "WRONG_ORGANISM",
 }
 PRIVATE_METADATA_FIELDS = {"Cluster", "SPECIES"}
@@ -229,9 +234,12 @@ def _build_outbreak_sample(
             sample.random_seed,
         )
         provenance["expected_coverage"] = round(expected_coverage, 4)
-    elif sample.implant == "TEN_READ_PAIRS":
+    elif sample.implant in {"TEN_READ_PAIRS", "TRUNCATE_TO_READ_PAIRS"}:
+        retained_pairs = retained_read_pairs_for_fault(
+            sample.implant, sample.implant_parameters
+        )
         provenance["retained_pairs"] = _copy_first_pairs(
-            source_r1, source_r2, output_r1, output_r2, 10
+            source_r1, source_r2, output_r1, output_r2, retained_pairs
         )
     elif sample.implant in {"ZERO_BYTE_R1", "ZERO_BYTE_R2"}:
         shutil.copyfile(source_r1, output_r1)

@@ -16,6 +16,7 @@ from genomepuzzle.contract import (
     failure_reason_for_implant,
     json_dump,
     normalize_answer_fields,
+    retained_read_pairs_for_fault,
     write_participant_contract,
     write_release_index,
 )
@@ -305,6 +306,10 @@ def resolve_release_samples(
     resolved = []
     seen_ids = set()
     for sample in spec.samples:
+        if sample.implant in {"TEN_READ_PAIRS", "TRUNCATE_TO_READ_PAIRS"}:
+            retained_read_pairs_for_fault(
+                sample.implant, sample.implant_parameters
+            )
         sample_id = sample.public_id or derive_sample_id(
             spec.release_id, sample.identity_key, id_salt or ""
         )
