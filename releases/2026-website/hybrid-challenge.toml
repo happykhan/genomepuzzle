@@ -1,9 +1,9 @@
 schema_version = "1.0"
-release_id = "2026-website-hybrid-challenge"
+release_id = "challenge-2-hybrid"
 exercise = "hybrid"
 mode = "challenge"
 master_seed = 4702613
-title = "Hybrid assembly challenge"
+title = "Challenge 2 — Hybrid assembly"
 description = "Demonstrate reproducible hybrid assembly and detect discordant read evidence."
 pass_threshold = 0.8
 

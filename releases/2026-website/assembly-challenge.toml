@@ -1,9 +1,9 @@
 schema_version = "1.0"
-release_id = "2026-website-assembly-challenge"
+release_id = "challenge-2-assembly"
 exercise = "assembly"
 mode = "challenge"
 master_seed = 4702612
-title = "Short-read assembly challenge"
+title = "Challenge 2 — Short-read assembly"
 description = "Demonstrate reproducible short-read assembly and defensible QC decisions."
 pass_threshold = 0.8
 
