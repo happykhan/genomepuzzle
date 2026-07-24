@@ -104,3 +104,40 @@ species = "Klebsiella pneumoniae"
 
     assert result == {"status": "ok"}
     assert len(thread_ids) > 1
+
+
+def test_contamination_is_mixed_by_exact_final_read_counts(tmp_path, monkeypatch):
+    source = tmp_path / "sources"
+    source.mkdir()
+    (source / "target.fasta").write_text(">target\n" + "A" * 500 + "\n")
+    (source / "ecoli.fasta").write_text(">ecoli\n" + "C" * 400 + "\n")
+    spec_path = tmp_path / "assembly.toml"
+    spec_path.write_text(
+        """
+release_id = "exact-mixture"
+exercise = "assembly"
+mode = "practice"
+
+[[samples]]
+source_id = "target"
+public_id = "Sample_dirty"
+implant = "CONTAMINATED"
+[samples.implant_parameters]
+contaminant_source_id = "ecoli"
+contamination_fraction = 0.50
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "genomepuzzle.read_generation._simulate_short_reads", _fake_short
+    )
+    output = tmp_path / "release"
+    generate_read_release(load_release_spec(spec_path), source, output)
+    provenance = json.loads((output / "private/provenance.json").read_text())
+    validation = provenance["samples"][0]["provenance"]["validation"]
+    assert validation["clean_pairs"] == 20
+    assert validation["contaminant_pairs"] == 20
+    assert validation["achieved_contamination_fraction"] == 0.5

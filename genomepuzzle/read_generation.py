@@ -375,28 +375,38 @@ def _generate_sample(
         clean_r2 = work_dir / ".{0}_clean_R2.fastq.gz".format(sample.source_id)
         dirty_r1 = work_dir / ".{0}_dirty_R1.fastq.gz".format(sample.source_id)
         dirty_r2 = work_dir / ".{0}_dirty_R2.fastq.gz".format(sample.source_id)
-        subsample_paired_fastq(
+        base_pairs = count_reads(str(base_r1))
+        available_contaminant_pairs = count_reads(str(contaminant_r1))
+        total_pairs = int(
+            min(
+                base_pairs / (1 - fraction),
+                available_contaminant_pairs / fraction,
+            )
+        )
+        requested_contaminant_pairs = round(total_pairs * fraction)
+        requested_clean_pairs = total_pairs - requested_contaminant_pairs
+        subsample_paired_read_by_count(
             str(base_r1),
             str(base_r2),
             str(clean_r1),
             str(clean_r2),
-            1 - fraction,
-            sample.random_seed,
+            num_reads=requested_clean_pairs,
+            random_seed=sample.random_seed,
         )
-        subsample_paired_fastq(
+        subsample_paired_read_by_count(
             str(contaminant_r1),
             str(contaminant_r2),
             str(dirty_r1),
             str(dirty_r2),
-            fraction,
-            sample.random_seed + 1,
+            num_reads=requested_contaminant_pairs,
+            random_seed=sample.random_seed + 1,
         )
         concatenate_fastqs([str(clean_r1), str(dirty_r1)], str(final_r1))
         concatenate_fastqs([str(clean_r2), str(dirty_r2)], str(final_r2))
         clean_pairs = count_reads(str(clean_r1))
         contaminant_pairs = count_reads(str(dirty_r1))
         achieved_fraction = contaminant_pairs / (clean_pairs + contaminant_pairs)
-        if abs(achieved_fraction - fraction) > 0.03:
+        if abs(achieved_fraction - fraction) > 1 / total_pairs:
             raise ValueError(
                 "achieved contamination fraction differs from requested fraction"
             )
@@ -444,17 +454,29 @@ def _generate_sample(
                 sample.source_id
             )
             fraction = float(_parameter(sample, "contamination_fraction", 0.5))
-            subsample_single_fastq(
+            base_long_count = count_reads(str(base_long))
+            available_contaminant_long = count_reads(
+                str(contaminant_long_for_hybrid)
+            )
+            total_long = int(
+                min(
+                    base_long_count / (1 - fraction),
+                    available_contaminant_long / fraction,
+                )
+            )
+            requested_contaminant_long = round(total_long * fraction)
+            requested_clean_long = total_long - requested_contaminant_long
+            subsample_single_fastq_by_count(
                 str(base_long),
                 str(clean_long),
-                1 - fraction,
-                sample.random_seed,
+                num_reads=requested_clean_long,
+                random_seed=sample.random_seed,
             )
-            subsample_single_fastq(
+            subsample_single_fastq_by_count(
                 str(contaminant_long_for_hybrid),
                 str(dirty_long),
-                fraction,
-                sample.random_seed + 1,
+                num_reads=requested_contaminant_long,
+                random_seed=sample.random_seed + 1,
             )
             concatenate_fastqs([str(clean_long), str(dirty_long)], str(final_long))
             clean_long_count = count_reads(str(clean_long))
@@ -462,7 +484,7 @@ def _generate_sample(
             long_fraction = contaminant_long_count / (
                 clean_long_count + contaminant_long_count
             )
-            if abs(long_fraction - fraction) > 0.05:
+            if abs(long_fraction - fraction) > 1 / total_long:
                 raise ValueError(
                     "achieved long-read contamination differs from requested fraction"
                 )
