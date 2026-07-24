@@ -45,7 +45,12 @@ def test_workflow_plan_writes_resumable_slurm_state(tmp_path):
     payload = json.loads(plan_path.read_text())
     script = (output / "build/scripts/generate.sbatch").read_text()
 
-    assert [stage["name"] for stage in payload["stages"]] == ["generate", "validate"]
+    assert [stage["name"] for stage in payload["stages"]] == [
+        "sources",
+        "generate",
+        "validate",
+    ]
+    assert payload["stages"][1]["dependencies"] == ["sources"]
     assert "pixi run genomepuzzle release run-stage" in script
     assert workflow_status(plan_path)[0]["status"] == "planned"
 
@@ -71,8 +76,12 @@ def test_submit_plan_records_afterok_dependencies(tmp_path, monkeypatch):
     )
     jobs = submit_plan(plan_path)
 
-    assert jobs == {"generate": "101", "validate": "102"}
-    assert calls == [("generate.sbatch", ()), ("validate.sbatch", ("101",))]
+    assert jobs == {"sources": "101", "generate": "102", "validate": "103"}
+    assert calls == [
+        ("sources.sbatch", ()),
+        ("generate.sbatch", ("101",)),
+        ("validate.sbatch", ("102",)),
+    ]
 
 
 def test_resume_does_not_duplicate_a_running_job(tmp_path, monkeypatch):
@@ -84,6 +93,10 @@ def test_resume_does_not_duplicate_a_running_job(tmp_path, monkeypatch):
     plan_path = write_release_plan(
         build_release_plan(spec, output, repo_dir=Path(__file__).parents[1])
     )
+    sources_path = output / "build/stages/sources.json"
+    sources = json.loads(sources_path.read_text())
+    sources.update({"status": "running", "job_id": "122"})
+    sources_path.write_text(json.dumps(sources))
     stage_path = output / "build/stages/generate.json"
     stage = json.loads(stage_path.read_text())
     stage.update({"status": "running", "job_id": "123"})
@@ -120,7 +133,8 @@ def test_status_reconciles_cancelled_slurm_job(tmp_path, monkeypatch):
         "genomepuzzle.workflow._scheduler_state", lambda job_id: "cancelled"
     )
 
-    assert workflow_status(plan_path)[0]["status"] == "cancelled"
+    statuses = {row["stage"]: row["status"] for row in workflow_status(plan_path)}
+    assert statuses["generate"] == "cancelled"
 
 
 def test_outbreak_plan_uses_native_generator_when_base_genome_is_declared(tmp_path):

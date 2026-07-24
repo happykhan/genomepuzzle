@@ -120,13 +120,35 @@ def build_release_plan(
         "genomepuzzle",
         "release",
     ]
+    source_stage = None
     if spec.exercise == "typing":
+        source_dir = _required_input(spec, spec_path, "source_dir")
+        source_stage = WorkflowStage(
+            name="sources",
+            command=tuple(
+                base
+                + [
+                    "fetch-assemblies",
+                    "--spec",
+                    str(spec_path),
+                    "--output-dir",
+                    source_dir,
+                ]
+            ),
+            resources=SlurmResources(
+                partition=partition,
+                cpus=2,
+                memory_gb=8,
+                time_limit="02:00:00",
+            ),
+            description="Fetch and checksum every required target and fault source.",
+        )
         build_command = base + [
             "build-typing",
             "--spec",
             str(spec_path),
             "--source-dir",
-            _required_input(spec, spec_path, "source_dir"),
+            source_dir,
             "--output-dir",
             str(output),
         ]
@@ -164,12 +186,33 @@ def build_release_plan(
         )
         resources = SlurmResources(partition=partition, cpus=4, memory_gb=16, time_limit="06:00:00")
     else:
+        source_dir = _required_input(spec, spec_path, "source_dir")
+        source_stage = WorkflowStage(
+            name="sources",
+            command=tuple(
+                base
+                + [
+                    "fetch-assemblies",
+                    "--spec",
+                    str(spec_path),
+                    "--output-dir",
+                    source_dir,
+                ]
+            ),
+            resources=SlurmResources(
+                partition=partition,
+                cpus=2,
+                memory_gb=8,
+                time_limit="02:00:00",
+            ),
+            description="Fetch and checksum every required target and fault source.",
+        )
         build_command = base + [
             "generate-reads",
             "--spec",
             str(spec_path),
             "--source-dir",
-            _required_input(spec, spec_path, "source_dir"),
+            source_dir,
             "--output-dir",
             str(output),
         ]
@@ -181,22 +224,29 @@ def build_release_plan(
         str(output),
         "--require-complete",
     ]
-    stages = (
-        WorkflowStage(
+    generate_stage = WorkflowStage(
             name="generate",
             command=tuple(build_command),
             resources=resources,
+            dependencies=("sources",) if source_stage else (),
             description="Generate, analyse, package and seal the release.",
-        ),
-        WorkflowStage(
-            name="validate",
-            command=tuple(validate_command),
-            resources=SlurmResources(
-                partition=partition, cpus=1, memory_gb=4, time_limit="01:00:00"
+        )
+    stages = tuple(
+        stage
+        for stage in (
+            source_stage,
+            generate_stage,
+            WorkflowStage(
+                name="validate",
+                command=tuple(validate_command),
+                resources=SlurmResources(
+                    partition=partition, cpus=1, memory_gb=4, time_limit="01:00:00"
+                ),
+                dependencies=("generate",),
+                description="Independently validate the completed release contract.",
             ),
-            dependencies=("generate",),
-            description="Independently validate the completed release contract.",
-        ),
+        )
+        if stage is not None
     )
     lock_path = repository / "pixi.lock"
     return WorkflowPlan(
