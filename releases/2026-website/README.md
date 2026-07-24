@@ -39,26 +39,26 @@ is ready for the GHRUPuzzles manifest-driven publisher.
 ## Contract 2.1 production build record
 
 The 24 July 2026 contract 2.1 releases completed through SLURM and passed both
-their dependent validation jobs and a separate local validation. The first
-seven plans are pinned to Git commit `4330039`; outbreak challenge is pinned
-to `371d210`, which adds the regression-tested sample-sheet handling required
-by its deliberate `MISSING_R2` fault.
+their dependent validation jobs and a separate local validation. Typing and
+hybrid plans are pinned to Git commit `4330039`. Assembly and outbreak were
+regenerated at `eb420a2`, which parameterises categorically tiny paired-read
+datasets while retaining their participant-facing `TOO_FEW_READS` reason.
 
 | Release | Generate / validate jobs | Bundle SHA-256 |
 | --- | --- | --- |
 | `typing-practice` | `25442292` / `25442293` | `c9fcdb57e1648e58d660a49d48399654da363e8c0d53f6ca2a5c4434ce020c7b` |
-| `assembly-practice` | `25442295` / `25442296` | `ad3123e7f5e966dbd44cd9a705f2436b326f74fe377b7b6764b390502701717b` |
+| `assembly-practice` | `25459273` / `25459274` | `871188425151ec40cd88d3a45d5ea86f896802b7d1471bea3beca4324e5e371e` |
 | `hybrid-practice` | `25442298` / `25442299` | `464de50827d1e86eea482516eb574f499629560cb8e90369efc7df2d9efee0b9` |
-| `outbreak-practice` | `25442304` / `25442305` | `c9a1901fa731225922ab21c59d8c076de92e63c65cb890faf94e4212e239b240` |
+| `outbreak-practice` | `25459275` / `25459276` | `e61bc3ae65de55cd834a0b01fc523d40bef01a225ceda244750dadddd29952d6` |
 | `challenge-2-typing` | `25442307` / `25442308` | `8307a36d4b979293ee2ea084b0a68278dc754ebcdd2a3d27fe34b7a38a7d6a12` |
-| `challenge-2-assembly` | `25442310` / `25442311` | `e5f4c5d26f50e5bd559d7038ed9f1642ed841015b0fca79432e0ceaebade8578` |
+| `challenge-2-assembly` | `25459278` / `25459279` | `6b9fef4a60d02fa4d4e5789002c38e2dfd37e85cde4c21037d62f490efca88e7` |
 | `challenge-2-hybrid` | `25442313` / `25442314` | `add243400399180bfb31a2ea52b50b9df95bd98f7b72b516aaadd7b79a6bc506` |
-| `challenge-2-outbreak` | `25451564` / `25451565` | `ac805d7b6541be07db7dfc7d06651e1ab3fea1d01b15e4ae8f0d171faf84dbcd` |
+| `challenge-2-outbreak` | `25459280` / `25459281` | `7311cc161a54ccba696716ddc1da0912480eee875eb8ad49bd80877ec989d0b2` |
 
 Manual fault inspection confirmed literal zero-byte and absent roles, exactly
-ten read pairs where declared, 40–50% typing contamination, exact 50% read
-contamination, and the intended hybrid short/long-read discordance. Public
-trees contain no private source, fault or answer keys.
+7, 23, 41 and 83 read pairs where declared, 40–50% typing contamination,
+exact 50% read contamination, and the intended hybrid short/long-read
+discordance. Public trees contain no private source, fault or answer keys.
 
 ## Superseded production build record
 
