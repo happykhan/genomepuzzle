@@ -1,0 +1,61 @@
+schema_version = "1.0"
+release_id = "challenge-2-outbreak"
+exercise = "outbreak"
+mode = "challenge"
+master_seed = 4702614
+title = "Challenge 2 — Outbreak investigation"
+description = "Demonstrate robust phylogenetic analysis, outbreak inference and isolate exclusion decisions."
+pass_threshold = 0.8
+
+[inputs]
+base_genome = "../../cache/assemblies/GCA_902156115.1.fasta"
+fault_genome = "../../cache/assemblies/GCF_000005845.2.fasta"
+metadata_csv = "outbreak-challenge-metadata.csv"
+
+[[samples]]
+source_id = "challenge-tip-01"
+[[samples]]
+source_id = "challenge-tip-02"
+[[samples]]
+source_id = "challenge-tip-03"
+[[samples]]
+source_id = "challenge-tip-04"
+[[samples]]
+source_id = "challenge-tip-05"
+[[samples]]
+source_id = "challenge-tip-06"
+[[samples]]
+source_id = "challenge-tip-07"
+[[samples]]
+source_id = "challenge-tip-08"
+[[samples]]
+source_id = "challenge-tip-09"
+[[samples]]
+source_id = "challenge-tip-10"
+[[samples]]
+source_id = "challenge-tip-11"
+[[samples]]
+source_id = "challenge-tip-12"
+[[samples]]
+source_id = "challenge-tip-13"
+[[samples]]
+source_id = "challenge-tip-14"
+[[samples]]
+source_id = "challenge-tip-15"
+implant = "ZERO_BYTE_R1"
+[[samples]]
+source_id = "challenge-tip-16"
+implant = "MISSING_R2"
+
+[[samples]]
+source_id = "challenge-tip-17"
+implant = "TRUNCATE_TO_READ_PAIRS"
+[samples.implant_parameters]
+retained_read_pairs = 83
+
+[[samples]]
+source_id = "challenge-tip-18"
+implant = "CONTAMINATED"
+[samples.implant_parameters]
+contaminant_source_id = "external-ecoli"
+contamination_fraction = 0.50

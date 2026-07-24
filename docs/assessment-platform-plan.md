@@ -15,7 +15,8 @@ Last updated: 2026-07-23
 - [x] Migrate outbreak packaging and read-level implants out of `eqa-test.py`.
 - [x] Integrate final short-read assets with release packages.
 - [x] Integrate final hybrid assets with release packages.
-- [ ] Add full external-tool integration and calibration runs.
+- [x] Add pinned external-tool integration through Pixi.
+- [x] Complete scientific calibration runs for every exercise.
 
 ## Purpose
 
@@ -104,7 +105,7 @@ A specification records:
 - public-ID registry or private salt reference;
 - master random seed;
 - simulator parameters;
-- pinned tool and container versions;
+- the pinned Pixi environment;
 - explicit implant assignments and severity;
 - expected public columns;
 - validation thresholds; and
@@ -120,16 +121,27 @@ Each completed dataset is packaged as:
 
 ```text
 release/
+  release.json
   public/
+    manifest.json
     dataset_manifest.json
     sample_sheet.csv
+    submission_schema.json
+    instructions.md
     checksums.sha256
     files/
   private/
-    answer_sheet.csv
+    answer_key.json
+    scoring_policy.json
     implant_manifest.json
     provenance.json
     validation_report.json
+  build/
+    plan.json
+    stages/
+    scripts/
+    logs/
+  COMPLETE.json
 ```
 
 ### Public manifest
@@ -167,7 +179,7 @@ Private provenance records, per sample:
 - expected analysis results;
 - generator Git commit;
 - dependency lock hash; and
-- external tool and container versions.
+- external tool versions and Pixi package builds.
 
 The answer sheet must use a versioned, machine-readable schema suitable for
 automatic scoring. Accepted aliases or equivalent answer representations
@@ -239,7 +251,8 @@ The intended interface is:
 
 ```bash
 genomepuzzle release build \
-  --spec releases/2026-round-1/hybrid-practice.toml
+  --spec releases/2026-round-1/hybrid-practice.toml \
+  --output-dir generated/2026-round-1/hybrid-practice
 
 genomepuzzle release validate \
   --release-dir generated/2026-round-1/hybrid-practice

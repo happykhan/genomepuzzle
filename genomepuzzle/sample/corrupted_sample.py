@@ -21,7 +21,7 @@ class CorruptedSample(BasicSample):
         modified_r2 (str): Path to the modified R2 read file.
 
     Methods:
-        __init__(input_dict: dict, output_dir: str, random_seed: int = 42, bin_dir: str = "bin"):
+        __init__(input_dict: dict, output_dir: str, random_seed: int = 42):
             Initializes the CorruptedSample instance with the given parameters.
         
         create_modified_reads(output_prefix: str, random_seed: int = 42) -> tuple:
@@ -35,11 +35,8 @@ class CorruptedSample(BasicSample):
         input_dict: dict,
         output_dir: str,
         random_seed: int = 42,
-        bin_dir: str = "bin",
     ):
-        super().__init__(
-            input_dict, output_dir, random_seed=random_seed, bin_dir=bin_dir
-        )
+        super().__init__(input_dict, output_dir, random_seed=random_seed)
         self.modified_r1 = None
         self.modified_r2 = None
 

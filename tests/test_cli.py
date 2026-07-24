@@ -12,14 +12,13 @@ runner = CliRunner()
 def test_cli_shows_help():
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "short" in result.stdout
     assert "long" in result.stdout
-    assert "rapid" in result.stdout
+    assert "legacy" in result.stdout
     assert "release" in result.stdout
 
 
 def test_hybrid_help_mentions_mode():
-    result = runner.invoke(app, ["long", "hybrid", "--help"])
+    result = runner.invoke(app, ["legacy", "hybrid", "--help"])
     assert result.exit_code == 0
     assert "mode" in result.stdout
     assert "challenge" in result.stdout
@@ -39,7 +38,7 @@ def test_long_report_help_mentions_manifest():
 
 
 def test_long_hybrid_slurm_help_mentions_partition():
-    result = runner.invoke(app, ["long", "hybrid-slurm", "--help"])
+    result = runner.invoke(app, ["legacy", "hybrid-slurm", "--help"])
     assert result.exit_code == 0
     assert "partition" in result.stdout
 

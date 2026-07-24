@@ -3,6 +3,11 @@ release_id = "2026-pilot-typing-practice"
 exercise = "typing"
 mode = "practice"
 master_seed = 4702026
+title = "Genotyping practice"
+description = "Recover Klebsiella typing and resistance calls from anonymous assemblies."
+
+[inputs]
+source_dir = "../../generated/2026-pilot/typing-sources"
 
 # Practice identifiers are deliberately frozen in this public specification.
 # Challenge releases omit public_id and use the private ID salt instead.

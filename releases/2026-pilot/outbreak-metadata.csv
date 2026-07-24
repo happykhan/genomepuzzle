@@ -1,0 +1,9 @@
+Sample,Cluster,SPECIES,Location,CollectionDate
+tip-01,cluster-1,Klebsiella pneumoniae,ICU,2026-01-03
+tip-02,cluster-1,Klebsiella pneumoniae,ICU,2026-01-05
+tip-03,cluster-1,Klebsiella pneumoniae,ICU,2026-01-08
+tip-04,cluster-2,Klebsiella pneumoniae,Surgical ward,2026-01-04
+tip-05,cluster-2,Klebsiella pneumoniae,Surgical ward,2026-01-07
+tip-06,cluster-2,Klebsiella pneumoniae,Surgical ward,2026-01-11
+tip-07,cluster-3,Klebsiella pneumoniae,Community,2026-01-02
+tip-08,cluster-3,Klebsiella pneumoniae,Community,2026-01-10

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghrupuzzles.org/schemas/genomepuzzle/manifest-2.1.json",
+  "title": "GenomePuzzle public manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "release_id",
+    "exercise",
+    "mode",
+    "title",
+    "description",
+    "samples"
+  ],
+  "properties": {
+    "schema_version": { "const": "2.1" },
+    "release_id": { "type": "string", "minLength": 1 },
+    "exercise": { "enum": ["typing", "assembly", "hybrid", "outbreak"] },
+    "mode": { "enum": ["practice", "challenge"] },
+    "title": { "type": "string", "minLength": 1 },
+    "description": { "type": "string", "minLength": 1 },
+    "samples": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sample_id", "files", "metadata"],
+        "properties": {
+          "sample_id": { "type": "string", "minLength": 1 },
+          "metadata": { "type": "object" },
+          "files": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["filename", "sha256", "size"],
+              "properties": {
+                "filename": { "type": "string", "minLength": 1 },
+                "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+                "size": { "type": "integer", "minimum": 0 }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

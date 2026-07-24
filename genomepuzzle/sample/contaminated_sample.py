@@ -40,11 +40,8 @@ class ContaminatedSample(BasicSample):
         input_dict: dict,
         output_dir: str,
         random_seed: int = 42,
-        bin_dir: str = "bin",
     ):
-        super().__init__(
-            input_dict, output_dir, random_seed=random_seed, bin_dir=bin_dir
-        )
+        super().__init__(input_dict, output_dir, random_seed=random_seed)
         self.modified_r1 = None
         self.modified_r2 = None
         self.contamination_percent = None

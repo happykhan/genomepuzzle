@@ -9,9 +9,8 @@ class LowCoverageSample(BasicSample):
         input_dict: dict,
         output_dir: str,
         random_seed: int = 42,
-        bin_dir: str = "bin",
     ):
-        super().__init__(input_dict, output_dir, random_seed=random_seed, bin_dir=bin_dir)
+        super().__init__(input_dict, output_dir, random_seed=random_seed)
         self.modified_r1 = None
         self.modified_r2 = None
         self.final_coverage = None
@@ -50,4 +49,3 @@ class LowCoverageSample(BasicSample):
         logging.info("Number of reads in subsample_output_r1: %d", read_subsample_count)
         self.read_count = read_subsample_count
         return self.modified_r1, self.modified_r2
-       

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ghrupuzzles.org/schemas/genomepuzzle/release-2.1.json",
+  "title": "GenomePuzzle release index",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "release_id",
+    "exercise",
+    "mode",
+    "title",
+    "description",
+    "artifacts"
+  ],
+  "properties": {
+    "schema_version": { "const": "2.1" },
+    "release_id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "exercise": { "enum": ["typing", "assembly", "hybrid", "outbreak"] },
+    "mode": { "enum": ["practice", "challenge"] },
+    "title": { "type": "string", "minLength": 1 },
+    "description": { "type": "string", "minLength": 1 },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "minLength": 1 },
+      "required": [
+        "public_manifest",
+        "sample_sheet",
+        "submission_schema",
+        "instructions",
+        "answer_key",
+        "scoring_policy",
+        "provenance",
+        "implant_manifest",
+        "validation_report"
+      ]
+    }
+  }
+}

@@ -1,0 +1,31 @@
+schema_version = "1.0"
+release_id = "example-hybrid-practice"
+exercise = "hybrid"
+mode = "practice"
+master_seed = 470
+
+[inputs]
+source_dir = "../../sources/hybrid"
+
+[[samples]]
+source_id = "GCA_000000001.1"
+public_id = "Sample_H001"
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+
+[[samples]]
+source_id = "GCA_000000002.1"
+public_id = "Sample_H002"
+implant = "TEN_LONG_READS"
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+
+[[samples]]
+source_id = "GCA_000000003.1"
+public_id = "Sample_H003"
+implant = "CONTAMINATED"
+[samples.implant_parameters]
+contaminant_source_id = "GCA_000000004.1"
+contamination_fraction = 0.50
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"

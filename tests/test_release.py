@@ -123,13 +123,29 @@ def test_release_manifests_keep_truth_private(tmp_path):
     answer_payload = json.loads(
         (release_dir / "private" / "answer_key.json").read_text(encoding="utf-8")
     )
+    fault_payload = json.loads(
+        (release_dir / "private" / "implant_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
     public_text = json.dumps(public_payload)
 
     assert "GCA_000001.1" not in public_text
     assert "MIXED_CONTIGS" not in public_text
     assert "ST42" not in public_text
     assert private_payload["samples"][0]["source_id"] == "GCA_000001.1"
-    assert answer_payload["samples"][0]["answers"]["st"] == "ST42"
+    assert answer_payload["samples"][0]["answers"]["st"] == "42"
+    assert answer_payload["samples"][0]["answers"]["qc_status"] == "FAIL"
+    assert (
+        answer_payload["samples"][0]["answers"]["failure_reason"]
+        == "CONTAMINATED"
+    )
+    assert fault_payload["samples"][0] == {
+        "sample_id": "Sample_fixed123",
+        "fault_type": "MIXED_CONTIGS",
+        "failure_reason": "CONTAMINATED",
+        "parameters": {"fraction": 0.1},
+    }
     assert "Sample_fixed123.fasta" in (
         release_dir / "public" / "checksums.sha256"
     ).read_text(encoding="utf-8")

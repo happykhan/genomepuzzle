@@ -1,0 +1,35 @@
+schema_version = "1.0"
+release_id = "2026-website-outbreak-practice"
+exercise = "outbreak"
+mode = "practice"
+master_seed = 4702604
+title = "Outbreak investigation practice"
+description = "Practise read QC, phylogeny and label-independent outbreak cluster assignment."
+pass_threshold = 0.8
+
+[inputs]
+base_genome = "../../cache/assemblies/GCA_902156115.1.fasta"
+metadata_csv = "outbreak-practice-metadata.csv"
+
+[[samples]]
+source_id = "practice-tip-01"
+public_id = "Sample_OP001"
+[[samples]]
+source_id = "practice-tip-02"
+public_id = "Sample_OP002"
+[[samples]]
+source_id = "practice-tip-03"
+public_id = "Sample_OP003"
+[[samples]]
+source_id = "practice-tip-04"
+public_id = "Sample_OP004"
+[[samples]]
+source_id = "practice-tip-05"
+public_id = "Sample_OP005"
+implant = "ZERO_BYTE_R2"
+[[samples]]
+source_id = "practice-tip-06"
+public_id = "Sample_OP006"
+implant = "TRUNCATE_TO_READ_PAIRS"
+[samples.implant_parameters]
+retained_read_pairs = 23

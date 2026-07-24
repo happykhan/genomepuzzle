@@ -1,0 +1,4 @@
+Sample,Cluster,SPECIES,Host,Location
+tip-01,cluster-1,Klebsiella pneumoniae,Human,Site A
+tip-02,cluster-1,Klebsiella pneumoniae,Human,Site A
+tip-03,cluster-2,Klebsiella pneumoniae,Human,Site B

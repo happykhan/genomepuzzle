@@ -9,6 +9,7 @@ fasterq*
 work/
 ghru_output_dataset/
 generated/
+cache/
 slurm-*.out
 .DS_Store
 .vscode/

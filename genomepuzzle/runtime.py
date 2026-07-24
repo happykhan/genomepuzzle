@@ -2,39 +2,16 @@
 Runtime helpers for external tool resolution.
 """
 
-import os
 import shutil
 import subprocess
 import gzip
-
-
-def project_root():
-    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-
-def bundled_bin_dir():
-    return os.path.join(project_root(), "bin")
+import os
 
 
 def resolve_tool(name):
-    """
-    Resolve an executable name from PATH first, then from a configured or bundled bin dir.
-    """
-    path_candidate = shutil.which(name)
-    if path_candidate:
-        return path_candidate
+    """Resolve only from the active Pixi environment's PATH."""
 
-    configured_bin = os.environ.get("GENOMEPUZZLE_BIN_DIR")
-    if configured_bin:
-        candidate = os.path.join(configured_bin, name)
-        if os.path.exists(candidate):
-            return candidate
-
-    bundled = os.path.join(bundled_bin_dir(), name)
-    if os.path.exists(bundled):
-        return bundled
-
-    return name
+    return shutil.which(name) or name
 
 
 def run_command(args, **kwargs):
@@ -54,8 +31,11 @@ def open_maybe_gzip(path, mode):
 
 def require_tool(name):
     candidate = resolve_tool(name)
-    if not shutil.which(candidate) and not os.path.exists(candidate):
-        raise RuntimeError("Required executable not found: {0}".format(name))
+    if not shutil.which(candidate):
+        raise RuntimeError(
+            "Required executable not found in the Pixi environment: {0}. "
+            "Run this command with `pixi run`.".format(name)
+        )
     return candidate
 
 
@@ -78,23 +58,27 @@ def unzip_archive(archive_path, output_dir):
 
 def seqtk_sample(input_fastq, output_fastq, seed, amount):
     seqtk = require_tool("seqtk")
-    with open_maybe_gzip(input_fastq, "rb") as input_handle:
-        with gzip.open(output_fastq, "wb") as output_handle:
-            process = subprocess.Popen(
-                [seqtk, "sample", "-s", str(seed), "-", str(amount)],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-            )
-            shutil.copyfileobj(input_handle, process.stdin)
-            process.stdin.close()
-            shutil.copyfileobj(process.stdout, output_handle)
-            process.stdout.close()
-            return_code = process.wait()
-            if return_code != 0:
-                raise subprocess.CalledProcessError(
-                    return_code,
-                    [seqtk, "sample", "-s", str(seed), "-", str(amount)],
-                )
+    pigz = require_tool("pigz")
+    compression_threads = max(
+        1, int(os.environ.get("SLURM_CPUS_PER_TASK", "1")) // 4
+    )
+    command = [seqtk, "sample", "-s", str(seed), str(input_fastq), str(amount)]
+    with open(output_fastq, "wb") as output_handle:
+        sampler = subprocess.Popen(command, stdout=subprocess.PIPE)
+        compressor = subprocess.Popen(
+            [pigz, "-n", "-p", str(compression_threads), "-c"],
+            stdin=sampler.stdout,
+            stdout=output_handle,
+        )
+        if sampler.stdout:
+            sampler.stdout.close()
+        compressor_code = compressor.wait()
+        sampler_code = sampler.wait()
+    if sampler_code or compressor_code:
+        raise subprocess.CalledProcessError(
+            sampler_code or compressor_code,
+            command,
+        )
 
 
 def seqtk_shift_quality(input_fastq, output_fastq, decrement):

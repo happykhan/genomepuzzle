@@ -1,0 +1,42 @@
+schema_version = "1.0"
+release_id = "challenge-2-typing"
+exercise = "typing"
+mode = "challenge"
+master_seed = 4702611
+title = "Challenge 2 — Genotyping"
+description = "Demonstrate robust Klebsiella genotyping and recognise results that require caution."
+pass_threshold = 0.8
+
+[inputs]
+source_dir = "../../cache/assemblies"
+
+[[samples]]
+source_id = "GCA_902156115.1"
+[[samples]]
+source_id = "GCA_902156205.1"
+[[samples]]
+source_id = "GCA_902156055.1"
+[[samples]]
+source_id = "GCA_902156095.1"
+[[samples]]
+source_id = "GCA_902156185.1"
+[[samples]]
+source_id = "GCA_902156125.1"
+[[samples]]
+source_id = "GCA_902156825.1"
+[[samples]]
+source_id = "GCA_902155925.1"
+implant = "ZERO_BYTE_ASSEMBLY"
+
+[[samples]]
+source_id = "GCA_902155945.1"
+implant = "FRAGMENTED"
+[samples.implant_parameters]
+fragment_size = 1000
+
+[[samples]]
+source_id = "GCA_902156085.1"
+implant = "MIXED_CONTIGS"
+[samples.implant_parameters]
+contaminant_source_id = "GCF_000005845.2"
+contamination_fraction = 0.45

@@ -1,0 +1,45 @@
+schema_version = "1.0"
+release_id = "2026-website-assembly-practice"
+exercise = "assembly"
+mode = "practice"
+master_seed = 4702602
+title = "Short-read assembly practice"
+description = "Practise assembly, taxonomic identification and read/assembly QC."
+pass_threshold = 0.8
+
+[inputs]
+source_dir = "../../cache/assemblies"
+
+[[samples]]
+source_id = "GCA_902156115.1"
+public_id = "Sample_AP001"
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+
+[[samples]]
+source_id = "GCA_902155925.1"
+public_id = "Sample_AP002"
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+
+[[samples]]
+source_id = "GCA_902155885.1"
+public_id = "Sample_AP003"
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+
+[[samples]]
+source_id = "GCA_902156185.1"
+public_id = "Sample_AP004"
+implant = "ZERO_BYTE_R2"
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+
+[[samples]]
+source_id = "GCA_902156205.1"
+public_id = "Sample_AP005"
+implant = "TRUNCATE_TO_READ_PAIRS"
+[samples.implant_parameters]
+retained_read_pairs = 7
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"

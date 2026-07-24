@@ -12,10 +12,11 @@ class KleborateSample(BasicSample):
         input_dict: dict,
         output_dir: str,
         random_seed: int = 42,
-        bin_dir: str = "bin",
         work_dir: str = "work",        
     ):
-        super().__init__(input_dict, output_dir, random_seed=random_seed, bin_dir=bin_dir, work_dir=work_dir)
+        super().__init__(
+            input_dict, output_dir, random_seed=random_seed, work_dir=work_dir
+        )
         self.analysis_results = None
 
     def to_dict(self):
@@ -48,20 +49,17 @@ class KleborateSample(BasicSample):
         kleboutput = os.path.join(self.work_dir, f"{self.sample_name}_kleborate_output", "klebsiella_pneumo_complex_output.txt")
         if not os.path.exists(kleboutput):
             logging.info("Running kleborate for %s", self.sample_name)
-            # Run kleborate with docker
-            require_tool("docker")
+            kleborate = require_tool("kleborate")
             command = [
-                "docker",
-                "run",
-                "--rm",
-                "-v",
-                f"{os.path.abspath(self.work_dir)}:/data",
-                "quay.io/biocontainers/kleborate:3.1.3--pyhdfd78af_0",
-                "kleborate",
+                kleborate,
                 "-a",
-                f"/data/{os.path.basename(self.assembly_file)}",
+                os.path.abspath(self.assembly_file),
                 "-o",
-                f"/data/{self.sample_name}_kleborate_output",
+                os.path.abspath(
+                    os.path.join(
+                        self.work_dir, f"{self.sample_name}_kleborate_output"
+                    )
+                ),
                 "-p",
                 "kpsc",
             ]
@@ -85,7 +83,7 @@ class KleborateSample(BasicSample):
                 kleborate_results = row
                 break  # Assuming we only need the first row
         return {
-            'kleborate_st': kleborate_results['klebsiella_pneumo_complex__mlst__ST'],
+            'st': kleborate_results['klebsiella_pneumo_complex__mlst__ST'],
             'k_locus': kleborate_results['klebsiella_pneumo_complex__kaptive__K_locus'],
             'capsule_type': kleborate_results['klebsiella_pneumo_complex__kaptive__K_type'],
             'wzi': kleborate_results['klebsiella_pneumo_complex__wzi__wzi'],

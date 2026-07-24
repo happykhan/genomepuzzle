@@ -1,0 +1,19 @@
+Sample,Cluster,SPECIES,Location,CollectionDate
+challenge-tip-01,cluster-1,Klebsiella pneumoniae,ICU,2026-05-01
+challenge-tip-02,cluster-1,Klebsiella pneumoniae,ICU,2026-05-03
+challenge-tip-03,cluster-1,Klebsiella pneumoniae,ICU,2026-05-05
+challenge-tip-04,cluster-1,Klebsiella pneumoniae,ICU,2026-05-08
+challenge-tip-05,cluster-1,Klebsiella pneumoniae,ICU,2026-05-11
+challenge-tip-06,cluster-1,Klebsiella pneumoniae,ICU,2026-05-14
+challenge-tip-07,cluster-2,Klebsiella pneumoniae,Surgical ward,2026-05-02
+challenge-tip-08,cluster-2,Klebsiella pneumoniae,Surgical ward,2026-05-04
+challenge-tip-09,cluster-2,Klebsiella pneumoniae,Surgical ward,2026-05-07
+challenge-tip-10,cluster-2,Klebsiella pneumoniae,Surgical ward,2026-05-10
+challenge-tip-11,cluster-2,Klebsiella pneumoniae,Surgical ward,2026-05-13
+challenge-tip-12,cluster-2,Klebsiella pneumoniae,Surgical ward,2026-05-16
+challenge-tip-13,cluster-3,Klebsiella pneumoniae,Community,2026-05-01
+challenge-tip-14,cluster-3,Klebsiella pneumoniae,Community,2026-05-06
+challenge-tip-15,cluster-3,Klebsiella pneumoniae,Community,2026-05-09
+challenge-tip-16,cluster-3,Klebsiella pneumoniae,Community,2026-05-12
+challenge-tip-17,cluster-3,Klebsiella pneumoniae,Community,2026-05-15
+challenge-tip-18,cluster-3,Klebsiella pneumoniae,Community,2026-05-18

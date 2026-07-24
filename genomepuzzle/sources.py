@@ -19,13 +19,17 @@ def required_assembly_accessions(spec: ReleaseSpec) -> tuple[str, ...]:
     accessions: set[str] = set()
     for sample in spec.samples:
         accessions.add(sample.source_id)
-        contaminant = sample.implant_parameters.get("contaminant_source_id")
-        if contaminant is not None:
-            if not isinstance(contaminant, str) or not contaminant.strip():
+        for parameter in ("contaminant_source_id", "replacement_source_id"):
+            additional = sample.implant_parameters.get(parameter)
+            if additional is None:
+                continue
+            if not isinstance(additional, str) or not additional.strip():
                 raise ValueError(
-                    "implant_parameters.contaminant_source_id must be a non-empty string"
+                    "implant_parameters.{0} must be a non-empty string".format(
+                        parameter
+                    )
                 )
-            accessions.add(contaminant.strip())
+            accessions.add(additional.strip())
     return tuple(sorted(accessions))
 
 

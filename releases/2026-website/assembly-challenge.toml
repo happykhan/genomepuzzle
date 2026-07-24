@@ -1,0 +1,62 @@
+schema_version = "1.0"
+release_id = "challenge-2-assembly"
+exercise = "assembly"
+mode = "challenge"
+master_seed = 4702612
+title = "Challenge 2 — Short-read assembly"
+description = "Demonstrate reproducible short-read assembly and defensible QC decisions."
+pass_threshold = 0.8
+
+[inputs]
+source_dir = "../../cache/assemblies"
+
+[[samples]]
+source_id = "GCA_902156115.1"
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+[[samples]]
+source_id = "GCA_902156205.1"
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+[[samples]]
+source_id = "GCA_902156055.1"
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+[[samples]]
+source_id = "GCA_902156095.1"
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+[[samples]]
+source_id = "GCA_902156125.1"
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+[[samples]]
+source_id = "GCA_902156825.1"
+[samples.expected_answers]
+species = "Klebsiella variicola subsp. variicola"
+[[samples]]
+source_id = "GCA_902155925.1"
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+[[samples]]
+source_id = "GCA_902155945.1"
+implant = "ZERO_BYTE_R2"
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+
+[[samples]]
+source_id = "GCA_902156185.1"
+implant = "TRUNCATE_TO_READ_PAIRS"
+[samples.implant_parameters]
+retained_read_pairs = 41
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
+
+[[samples]]
+source_id = "GCA_902156085.1"
+implant = "CONTAMINATED"
+[samples.implant_parameters]
+contaminant_source_id = "GCF_000005845.2"
+contamination_fraction = 0.50
+[samples.expected_answers]
+species = "Klebsiella pneumoniae"
