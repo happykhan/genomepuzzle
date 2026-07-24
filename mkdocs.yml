@@ -68,6 +68,7 @@ nav:
       - Troubleshooting: operations/troubleshooting.md
   - Integrate:
       - Release contract v2: release-contract-v2.md
+      - Challenge 2 website handoff: challenge-2-website-handoff.md
   - Project:
       - Design and roadmap: assessment-platform-plan.md
       - Contributing: contributing.md
