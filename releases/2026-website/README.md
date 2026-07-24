@@ -36,6 +36,30 @@ pixi run genomepuzzle release submit \
 Only a release containing `COMPLETE.json` and passing independent validation
 is ready for the GHRUPuzzles manifest-driven publisher.
 
+## Contract 2.1 production build record
+
+The 24 July 2026 contract 2.1 releases completed through SLURM and passed both
+their dependent validation jobs and a separate local validation. The first
+seven plans are pinned to Git commit `4330039`; outbreak challenge is pinned
+to `371d210`, which adds the regression-tested sample-sheet handling required
+by its deliberate `MISSING_R2` fault.
+
+| Release | Generate / validate jobs | Bundle SHA-256 |
+| --- | --- | --- |
+| `typing-practice` | `25442292` / `25442293` | `c9fcdb57e1648e58d660a49d48399654da363e8c0d53f6ca2a5c4434ce020c7b` |
+| `assembly-practice` | `25442295` / `25442296` | `ad3123e7f5e966dbd44cd9a705f2436b326f74fe377b7b6764b390502701717b` |
+| `hybrid-practice` | `25442298` / `25442299` | `464de50827d1e86eea482516eb574f499629560cb8e90369efc7df2d9efee0b9` |
+| `outbreak-practice` | `25442304` / `25442305` | `c9a1901fa731225922ab21c59d8c076de92e63c65cb890faf94e4212e239b240` |
+| `challenge-2-typing` | `25442307` / `25442308` | `8307a36d4b979293ee2ea084b0a68278dc754ebcdd2a3d27fe34b7a38a7d6a12` |
+| `challenge-2-assembly` | `25442310` / `25442311` | `e5f4c5d26f50e5bd559d7038ed9f1642ed841015b0fca79432e0ceaebade8578` |
+| `challenge-2-hybrid` | `25442313` / `25442314` | `add243400399180bfb31a2ea52b50b9df95bd98f7b72b516aaadd7b79a6bc506` |
+| `challenge-2-outbreak` | `25451564` / `25451565` | `ac805d7b6541be07db7dfc7d06651e1ab3fea1d01b15e4ae8f0d171faf84dbcd` |
+
+Manual fault inspection confirmed literal zero-byte and absent roles, exactly
+ten read pairs where declared, 40–50% typing contamination, exact 50% read
+contamination, and the intended hybrid short/long-read discordance. Public
+trees contain no private source, fault or answer keys.
+
 ## Superseded production build record
 
 The 23 July 2026 production build completed through SLURM, passed independent
@@ -65,5 +89,5 @@ matched every remote object size and SHA-256 metadata value, confirmed HTTP
 200 participant downloads for all practice exercises, and found no Challenge
 2 prefix or private-answer path in the public bucket.
 
-The contract-2.1 replacements defined here must be generated, manually
-audited and uploaded over those objects before website registration.
+The validated contract 2.1 releases recorded above supersede these objects and
+must replace them in R2 before website registration.
