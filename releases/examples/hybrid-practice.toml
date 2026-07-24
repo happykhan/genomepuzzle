@@ -16,9 +16,7 @@ species = "Klebsiella pneumoniae"
 [[samples]]
 source_id = "GCA_000000002.1"
 public_id = "Sample_H002"
-implant = "LOW_LONG_COVERAGE"
-[samples.implant_parameters]
-read_fraction = 0.15
+implant = "TEN_LONG_READS"
 [samples.expected_answers]
 species = "Klebsiella pneumoniae"
 
@@ -28,6 +26,6 @@ public_id = "Sample_H003"
 implant = "CONTAMINATED"
 [samples.implant_parameters]
 contaminant_source_id = "GCA_000000004.1"
-contamination_fraction = 0.20
+contamination_fraction = 0.50
 [samples.expected_answers]
 species = "Klebsiella pneumoniae"

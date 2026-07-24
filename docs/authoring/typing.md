@@ -18,8 +18,10 @@ sources/typing/
 | Implant | Important parameters | Intended signal |
 | --- | --- | --- |
 | `NORMAL` or `NONE` | — | Clean assembly |
-| `FRAGMENTED` | `fragment_size` | Poor contiguity and potentially disrupted loci |
-| `MIXED_CONTIGS` | `contaminant_source_id`, `contamination_fraction` | Mixed assembly |
+| `FRAGMENTED` | `fragment_size` | Categorically extreme fragmentation |
+| `MIXED_CONTIGS` | `contaminant_source_id`, `contamination_fraction` | A 30–50% different-species mixture |
+| `ZERO_BYTE_ASSEMBLY` | — | A literal zero-byte FASTA |
+| `WRONG_ORGANISM` | `replacement_source_id` | Complete replacement with another organism |
 
 ```toml
 [[samples]]
@@ -28,7 +30,7 @@ implant = "MIXED_CONTIGS"
 
 [samples.implant_parameters]
 contaminant_source_id = "GCA_000000100.1"
-contamination_fraction = 0.10
+contamination_fraction = 0.50
 ```
 
 The contaminant assembly must exist in the same source directory. Source names

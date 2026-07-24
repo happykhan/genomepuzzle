@@ -61,6 +61,7 @@ def generate_outbreak_release(
     release_dir: str | os.PathLike[str],
     *,
     id_salt: str | None = None,
+    fault_genome: str | os.PathLike[str] | None = None,
     shared_cluster_snps: int = 20,
     private_snps: int = 5,
     coverage: float = 30,
@@ -81,6 +82,21 @@ def generate_outbreak_release(
             "outbreak metadata is missing spec sources: {0}".format(
                 ", ".join(sorted(missing))
             )
+        )
+    external_fault_sources = {
+        str(value)
+        for sample in resolved_samples
+        for key in ("contaminant_source_id", "replacement_source_id")
+        for value in [sample.implant_parameters.get(key)]
+        if isinstance(value, str) and value and value not in required_sources
+    }
+    if len(external_fault_sources) > 1:
+        raise ValueError(
+            "native outbreak generation currently supports one external fault source"
+        )
+    if external_fault_sources and fault_genome is None:
+        raise ValueError(
+            "an external contaminant or replacement requires fault_genome"
         )
 
     reference_path = Path(base_genome).resolve()
@@ -138,6 +154,40 @@ def generate_outbreak_release(
     workers = min(max(1, allocated_cpus), len(resolved_samples))
     with ThreadPoolExecutor(max_workers=workers) as executor:
         simulation_rows = list(executor.map(simulate_sample, resolved_samples))
+    external_fault_row = None
+    if external_fault_sources:
+        external_source_id = next(iter(external_fault_sources))
+        fault_path = Path(fault_genome).resolve()
+        fault_reference = _reference_sequence(fault_path)
+        fault_fasta = work / "{0}.fasta".format(external_source_id)
+        fault_fasta.write_text(
+            ">{0}\n{1}\n".format(external_source_id, fault_reference),
+            encoding="utf-8",
+        )
+        fault_r1 = work / "{0}_R1.fastq.gz".format(external_source_id)
+        fault_r2 = work / "{0}_R2.fastq.gz".format(external_source_id)
+        _simulate_short_reads(
+            fault_fasta,
+            fault_r1,
+            fault_r2,
+            seed=_stable_seed(
+                spec.release_id,
+                external_source_id,
+                "fault-reads",
+                spec.master_seed,
+            ),
+            coverage=coverage,
+            read_length=150,
+            fragment_length=300,
+            fragment_sd=50,
+        )
+        external_fault_row = {
+            "source_id": external_source_id,
+            "genome": str(fault_path),
+            "genome_sha256": hashlib.sha256(
+                fault_reference.encode("ascii")
+            ).hexdigest(),
+        }
     json_dump(
         destination / "build" / "outbreak_simulation.json",
         {
@@ -148,6 +198,7 @@ def generate_outbreak_release(
             "private_snps": private_snps,
             "coverage": coverage,
             "samples": simulation_rows,
+            "external_fault_source": external_fault_row,
         },
     )
     return build_outbreak_release(

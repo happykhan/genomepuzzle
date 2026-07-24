@@ -6,10 +6,10 @@ challenge release.
 
 | Exercise | Practice cohort | Challenge cohort |
 | --- | ---: | ---: |
-| Genotyping | 4 (3 control, 1 troublesome) | 10 (8 control, 2 troublesome) |
-| Short-read assembly | 4 (3 control, 1 troublesome) | 10 (8 control, 2 troublesome) |
-| Hybrid assembly | 4 (3 control, 1 troublesome) | 10 (8 control, 2 troublesome) |
-| Phylogeny/outbreak | 6 (5 control, 1 troublesome) | 18 (16 control, 2 troublesome) |
+| Genotyping | 5 (3 pass, 2 fail) | 10 (7 pass, 3 fail) |
+| Short-read assembly | 5 (3 pass, 2 fail) | 10 (7 pass, 3 fail) |
+| Hybrid assembly | 5 (3 pass, 2 fail) | 10 (7 pass, 3 fail) |
+| Phylogeny/outbreak | 6 (4 pass, 2 fail) | 18 (14 pass, 4 fail) |
 
 Practice IDs are fixed so tutorials and repeat attempts remain comparable.
 Challenge IDs are derived from `GENOMEPUZZLE_ID_SALT`; never commit or publish
@@ -36,11 +36,12 @@ pixi run genomepuzzle release submit \
 Only a release containing `COMPLETE.json` and passing independent validation
 is ready for the GHRUPuzzles manifest-driven publisher.
 
-## Production build record
+## Superseded production build record
 
 The 23 July 2026 production build completed through SLURM, passed independent
 GenomePuzzle validation and passed a dry run through the GHRUPuzzles
-manifest-driven publisher.
+manifest-driven publisher. It uses the previous QC contract and is retained
+only as provenance; it must not be registered on the website.
 
 | Release | Generate / validate jobs | Bundle SHA-256 |
 | --- | --- | --- |
@@ -57,9 +58,12 @@ The four original date-prefixed challenge builds were superseded before
 publication. Their replacements use the participant-facing `Challenge 2`
 name and are recorded after regeneration.
 
-All eight releases were published to R2 on 24 July 2026. Practice participant
+These eight superseded releases were published to R2 on 24 July 2026. Practice participant
 artifacts are in the public practice bucket; practice answer material and the
 complete Challenge 2 contracts are in the private bucket. A post-upload audit
 matched every remote object size and SHA-256 metadata value, confirmed HTTP
 200 participant downloads for all practice exercises, and found no Challenge
 2 prefix or private-answer path in the public bucket.
+
+The contract-2.1 replacements defined here must be generated, manually
+audited and uploaded over those objects before website registration.

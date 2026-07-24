@@ -52,6 +52,16 @@ def _find_asset(source_dir: Path, source_id: str, suffixes: tuple[str, ...]) -> 
     )
 
 
+def _find_asset_optional(
+    source_dir: Path, source_id: str, suffixes: tuple[str, ...]
+) -> Path | None:
+    for suffix in suffixes:
+        candidate = source_dir / "{0}{1}".format(source_id, suffix)
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def package_read_release(
     spec: ReleaseSpec,
     source_dir: str | Path,
@@ -80,43 +90,100 @@ def package_read_release(
     def package_sample(sample) -> ReleaseArtifactSample:
         if sample.source_id not in answers_by_source:
             raise ValueError("expected answers missing source {0}".format(sample.source_id))
-        source_r1 = _find_asset(
-            source_path, sample.source_id, ("_R1.fastq.gz", "_1.fastq.gz", "_1.fq.gz")
-        )
-        source_r2 = _find_asset(
-            source_path, sample.source_id, ("_R2.fastq.gz", "_2.fastq.gz", "_2.fq.gz")
-        )
+        r1_suffixes = ("_R1.fastq.gz", "_1.fastq.gz", "_1.fq.gz")
+        r2_suffixes = ("_R2.fastq.gz", "_2.fastq.gz", "_2.fq.gz")
+        source_r1 = _find_asset_optional(source_path, sample.source_id, r1_suffixes)
+        source_r2 = _find_asset_optional(source_path, sample.source_id, r2_suffixes)
+        missing_r1 = sample.implant == "MISSING_R1"
+        missing_r2 = sample.implant == "MISSING_R2"
+        if missing_r1 and source_r1 is not None:
+            raise ValueError("MISSING_R1 fault materialized an R1 asset")
+        if missing_r2 and source_r2 is not None:
+            raise ValueError("MISSING_R2 fault materialized an R2 asset")
+        if source_r1 is None and not missing_r1:
+            source_r1 = _find_asset(source_path, sample.source_id, r1_suffixes)
+        if source_r2 is None and not missing_r2:
+            source_r2 = _find_asset(source_path, sample.source_id, r2_suffixes)
         output_r1 = files_dir / "{0}_R1.fastq.gz".format(sample.sample_id)
         output_r2 = files_dir / "{0}_R2.fastq.gz".format(sample.sample_id)
-        if preanonymized:
-            participant_pairs = validate_paired_fastq(
-                source_r1, source_r2, sample.sample_id
-            )
-            shutil.copyfile(source_r1, output_r1)
-            shutil.copyfile(source_r2, output_r2)
+        zero_r1 = sample.implant == "ZERO_BYTE_R1"
+        zero_r2 = sample.implant == "ZERO_BYTE_R2"
+        faulted_pair = (
+            missing_r1
+            or missing_r2
+            or zero_r1
+            or zero_r2
+            or sample.implant
+            in {
+                "TRUNCATED_R1_TO_10_READS",
+                "TRUNCATED_R2_TO_10_READS",
+            }
+        )
+        files: dict[str, str] = {}
+        provenance: dict[str, object] = {}
+        if not faulted_pair:
+            assert source_r1 is not None and source_r2 is not None
+            if preanonymized:
+                participant_pairs = validate_paired_fastq(
+                    source_r1, source_r2, sample.sample_id
+                )
+                shutil.copyfile(source_r1, output_r1)
+                shutil.copyfile(source_r2, output_r2)
+            else:
+                participant_pairs = anonymize_paired_fastq(
+                    source_r1,
+                    source_r2,
+                    output_r1,
+                    output_r2,
+                    sample.sample_id,
+                )
+            files.update({"read_1": str(output_r1), "read_2": str(output_r2)})
+            provenance["participant_read_pairs"] = participant_pairs
         else:
-            participant_pairs = anonymize_paired_fastq(
-                source_r1,
-                source_r2,
-                output_r1,
-                output_r2,
-                sample.sample_id,
-            )
-        files = {"read_1": str(output_r1), "read_2": str(output_r2)}
-        provenance: dict[str, object] = {
-            "source_r1": str(source_r1),
-            "source_r2": str(source_r2),
-            "source_r1_sha256": sha256_file(source_r1),
-            "source_r2_sha256": sha256_file(source_r2),
-            "participant_read_pairs": participant_pairs,
-        }
+            participant_counts: dict[str, int] = {}
+            for role, source, output, is_zero in (
+                ("read_1", source_r1, output_r1, zero_r1),
+                ("read_2", source_r2, output_r2, zero_r2),
+            ):
+                if source is None:
+                    continue
+                if is_zero:
+                    if source.stat().st_size != 0:
+                        raise ValueError(
+                            "{0} fault did not produce a zero-byte file".format(
+                                sample.implant
+                            )
+                        )
+                    shutil.copyfile(source, output)
+                    participant_counts[role] = 0
+                else:
+                    if source.stat().st_size == 0:
+                        raise ValueError(
+                            "undeclared zero-byte participant file for {0}".format(role)
+                        )
+                    shutil.copyfile(source, output)
+                    if preanonymized:
+                        participant_counts[role] = validate_single_fastq(
+                            output, sample.sample_id
+                        )
+                    else:
+                        participant_counts[role] = anonymize_single_fastq_in_place(
+                            output, sample.sample_id, role=role
+                        )
+                files[role] = str(output)
+            provenance["participant_read_counts"] = participant_counts
+        for role, source in (("r1", source_r1), ("r2", source_r2)):
+            if source is not None:
+                provenance["source_{0}".format(role)] = str(source)
+                provenance["source_{0}_sha256".format(role)] = sha256_file(source)
         validation = dict((implant_validations or {}).get(sample.source_id, {}))
         if sample.implant in {"NORMAL", "NONE"} and not validation:
             validation = {
                 "status": "passed",
                 "checks": ["paired_fastq_structure", "anonymous_headers"],
-                "implant": sample.implant,
+                "fault_type": sample.implant,
             }
+        validation.setdefault("fault_type", sample.implant)
         if validation.get("status") != "passed":
             raise ValueError(
                 "troublesome sample {0} requires a passing implant validation".format(
@@ -125,24 +192,46 @@ def package_read_release(
             )
         provenance["validation"] = validation
         if spec.exercise == "hybrid":
-            source_long = _find_asset(
-                source_path,
-                sample.source_id,
-                ("_long.fastq.gz", "_ONT.fastq.gz", "_long.fq.gz"),
+            long_suffixes = ("_long.fastq.gz", "_ONT.fastq.gz", "_long.fq.gz")
+            source_long = _find_asset_optional(
+                source_path, sample.source_id, long_suffixes
             )
-            output_long = files_dir / "{0}_long.fastq.gz".format(sample.sample_id)
-            shutil.copyfile(source_long, output_long)
-            if preanonymized:
-                provenance["participant_long_reads"] = validate_single_fastq(
-                    output_long, sample.sample_id
+            missing_long = sample.implant == "MISSING_LONG_READS"
+            zero_long = sample.implant == "ZERO_BYTE_LONG_READS"
+            if missing_long and source_long is not None:
+                raise ValueError(
+                    "MISSING_LONG_READS fault materialized a long-read asset"
                 )
-            else:
-                provenance["participant_long_reads"] = anonymize_single_fastq_in_place(
-                    output_long, sample.sample_id
+            if source_long is None and not missing_long:
+                source_long = _find_asset(
+                    source_path, sample.source_id, long_suffixes
                 )
-            files["long_reads"] = str(output_long)
-            provenance["source_long_reads"] = str(source_long)
-            provenance["source_long_reads_sha256"] = sha256_file(source_long)
+            if source_long is not None:
+                output_long = files_dir / "{0}_long.fastq.gz".format(sample.sample_id)
+                if zero_long:
+                    if source_long.stat().st_size != 0:
+                        raise ValueError(
+                            "ZERO_BYTE_LONG_READS fault did not produce a zero-byte file"
+                        )
+                    shutil.copyfile(source_long, output_long)
+                    provenance["participant_long_reads"] = 0
+                else:
+                    if source_long.stat().st_size == 0:
+                        raise ValueError("undeclared zero-byte long-read file")
+                    shutil.copyfile(source_long, output_long)
+                    if preanonymized:
+                        provenance["participant_long_reads"] = validate_single_fastq(
+                            output_long, sample.sample_id
+                        )
+                    else:
+                        provenance[
+                            "participant_long_reads"
+                        ] = anonymize_single_fastq_in_place(
+                            output_long, sample.sample_id
+                        )
+                files["long_reads"] = str(output_long)
+                provenance["source_long_reads"] = str(source_long)
+                provenance["source_long_reads_sha256"] = sha256_file(source_long)
         return ReleaseArtifactSample(
             sample_id=sample.sample_id,
             source_id=sample.source_id,

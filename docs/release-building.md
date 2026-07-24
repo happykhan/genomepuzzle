@@ -87,7 +87,7 @@ source_id = "GCA_000000002.1"
 identity_key = "assembly-low-coverage-1"
 implant = "LOW_COVERAGE"
 [samples.implant_parameters]
-read_fraction = 0.15
+read_fraction = 0.02
 [samples.expected_answers]
 species = "Klebsiella pneumoniae"
 ```
@@ -121,21 +121,22 @@ source_id = "GCA_000000099.1"
 implant = "MIXED_CONTIGS"
 [samples.implant_parameters]
 contaminant_source_id = "GCA_000000100.1"
-contamination_fraction = 0.10
+contamination_fraction = 0.50
 ```
 
 ### Short-read assembly
 
 ART creates paired reads directly from the frozen reference assembly.
-Supported implants are `LOW_COVERAGE`, `POOR_QUALITY`, `TRUNCATED` and
-`CONTAMINATED`. Every troublesome sample must materialise its requested
-implant; silent fallback to `NORMAL` is forbidden.
+Supported catastrophic faults include `LOW_COVERAGE`, `TEN_READ_PAIRS`,
+zero-byte or missing mates, `CONTAMINATED` and `WRONG_ORGANISM`. Every fault
+must materialise its exact requested operation; silent fallback to `NORMAL`
+is forbidden.
 
 ### Hybrid assembly
 
-ART and Badread produce the short- and long-read tracks. Supported implants
-are `LOW_SHORT_COVERAGE`, `LOW_LONG_COVERAGE`, `LONG_READ_QUALITY` and
-`CONTAMINATED`. A contaminated hybrid sample receives contamination in both
+ART and Badread produce the short- and long-read tracks. Hybrid faults add
+missing, zero-byte or ten-read long-read roles and discordant short/long
+organisms. A contaminated hybrid sample receives 30–90% contamination in both
 data modalities.
 
 ### Phylogeny and outbreak

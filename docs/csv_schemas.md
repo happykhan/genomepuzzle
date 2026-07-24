@@ -21,7 +21,7 @@ rather than maintaining a second list of columns.
 ## Genotyping
 
 ```text
-sample_id,species,st,k_locus,capsule_type,wzi,o_locus,o_type,bla_carb
+sample_id,qc_status,failure_reason,species,st,k_locus,capsule_type,wzi,o_locus,o_type,bla_carb,notes
 ```
 
 `st` is the canonical sequence-type name. Analyser-specific names such as
@@ -31,13 +31,13 @@ sample_id,species,st,k_locus,capsule_type,wzi,o_locus,o_type,bla_carb
 ## Short-read assembly
 
 ```text
-sample_id,species,qc,error,notes
+sample_id,qc_status,failure_reason,species,assembler,contig_count,total_length,n50,longest_contig,notes
 ```
 
 ## Hybrid assembly
 
 ```text
-sample_id,species,assembler,qc,error,notes
+sample_id,qc_status,failure_reason,species,assembler,contig_count,total_length,n50,longest_contig,notes
 ```
 
 Source/reference accessions are deliberately excluded.
@@ -45,7 +45,7 @@ Source/reference accessions are deliberately excluded.
 ## Phylogeny and outbreak
 
 ```text
-sample_id,cluster,species,qc_decision,notes
+sample_id,qc_status,failure_reason,species,cluster,notes
 ```
 
 Cluster labels are arbitrary. Scoring compares the inferred partition rather
@@ -65,3 +65,6 @@ replaced by the release sample IDs.
 
 Legacy CSV formats are accepted only by commands under `genomepuzzle legacy`;
 they are not valid v2 release bundles.
+
+See [QC failures and participant results](authoring/qc-and-results.md) for
+conditional scoring and the complete categorical failure vocabulary.

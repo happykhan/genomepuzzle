@@ -204,7 +204,7 @@ def calibrate_release(
         }
         report: dict[str, Any] = {
             "sample_id": sample_id,
-            "implant": sample_truth[sample_id]["implant"]["type"],
+            "fault_type": sample_truth[sample_id]["fault"]["fault_type"],
             "read_metrics": {
                 role: fastq_metrics(path)
                 for role, path in paths.items()

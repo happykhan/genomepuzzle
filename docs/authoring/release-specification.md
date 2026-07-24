@@ -48,7 +48,7 @@ identity_key = "stable-purpose-specific-key"
 implant = "LOW_COVERAGE"
 
 [samples.implant_parameters]
-read_fraction = 0.15
+read_fraction = 0.02
 
 [samples.expected_answers]
 species = "Klebsiella pneumoniae"

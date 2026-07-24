@@ -57,7 +57,11 @@ def test_package_read_release(tmp_path, exercise):
     private = json.loads(Path(manifests["private_manifest"]).read_text())
     assert "source-a" not in public_text
     assert private["samples"][0]["source_id"] == "source-a"
-    assert private["samples"][0]["expected_answers"]["qc"] == "fail"
+    assert private["samples"][0]["expected_answers"]["qc_status"] == "FAIL"
+    assert (
+        private["samples"][0]["expected_answers"]["failure_reason"]
+        == "LOW_COVERAGE"
+    )
     assert (output / "public/sample_sheet.csv").is_file()
     assert (output / "COMPLETE.json").is_file()
     expected_file_count = 3 if exercise == "hybrid" else 2
@@ -127,3 +131,107 @@ public_id = "Sample_{index}"
     )
 
     assert len(thread_ids) > 1
+
+
+@pytest.mark.parametrize(
+    ("fault_type", "present_roles", "zero_role"),
+    [
+        ("MISSING_R2", {"read_1"}, None),
+        ("ZERO_BYTE_R1", {"read_1", "read_2"}, "read_1"),
+    ],
+)
+def test_package_read_release_accepts_only_declared_catastrophic_file_faults(
+    tmp_path, fault_type, present_roles, zero_role
+):
+    source = tmp_path / "source"
+    source.mkdir()
+    r1 = source / "source-a_R1.fastq.gz"
+    r2 = source / "source-a_R2.fastq.gz"
+    if fault_type != "MISSING_R1":
+        if zero_role == "read_1":
+            r1.write_bytes(b"")
+        else:
+            with gzip.open(r1, "wt") as handle:
+                handle.write("@source-a/1\nACGT\n+\nIIII\n")
+    if fault_type != "MISSING_R2":
+        if zero_role == "read_2":
+            r2.write_bytes(b"")
+        else:
+            with gzip.open(r2, "wt") as handle:
+                handle.write("@source-a/2\nACGT\n+\nIIII\n")
+    spec_path = tmp_path / "release.toml"
+    spec_path.write_text(
+        """
+release_id = "catastrophic-file-fault"
+exercise = "assembly"
+mode = "practice"
+
+[[samples]]
+source_id = "source-a"
+public_id = "Sample_fault"
+implant = "{fault_type}"
+""".format(fault_type=fault_type).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    output = tmp_path / "output"
+    package_read_release(
+        load_release_spec(spec_path),
+        source,
+        {"source-a": {"species": "Klebsiella pneumoniae"}},
+        output,
+        implant_validations={
+            "source-a": {
+                "status": "passed",
+                "checks": ["catastrophic_file_fault_materialized"],
+            }
+        },
+    )
+    manifest = json.loads((output / "public/manifest.json").read_text())
+    files = manifest["samples"][0]["files"]
+    assert set(files) == present_roles
+    if zero_role:
+        assert files[zero_role]["size"] == 0
+    fault = json.loads(
+        (output / "private/implant_manifest.json").read_text()
+    )["samples"][0]
+    assert fault["fault_type"] == fault_type
+    assert fault["failure_reason"] in {"EMPTY_FILE", "MISSING_MATE"}
+
+
+def test_hybrid_release_can_deliberately_omit_long_reads(tmp_path):
+    source = tmp_path / "source"
+    source.mkdir()
+    for mate in (1, 2):
+        with gzip.open(source / "source-a_R{0}.fastq.gz".format(mate), "wt") as handle:
+            handle.write("@source-a/{0}\nACGT\n+\nIIII\n".format(mate))
+    spec_path = tmp_path / "release.toml"
+    spec_path.write_text(
+        """
+release_id = "missing-long-reads"
+exercise = "hybrid"
+mode = "practice"
+
+[[samples]]
+source_id = "source-a"
+public_id = "Sample_fault"
+implant = "MISSING_LONG_READS"
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    output = tmp_path / "output"
+    package_read_release(
+        load_release_spec(spec_path),
+        source,
+        {"source-a": {"species": "Klebsiella pneumoniae"}},
+        output,
+        implant_validations={
+            "source-a": {
+                "status": "passed",
+                "checks": ["missing_long_reads_materialized"],
+            }
+        },
+    )
+    manifest = json.loads((output / "public/manifest.json").read_text())
+    assert set(manifest["samples"][0]["files"]) == {"read_1", "read_2"}

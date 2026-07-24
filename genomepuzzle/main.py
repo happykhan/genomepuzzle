@@ -448,6 +448,7 @@ if typer is not None:
         metadata_csv: str = typer.Option(..., "--metadata"),
         output_dir: str = typer.Option(..., "--output-dir"),
         base_genome: str = typer.Option(None, "--base-genome"),
+        fault_genome: str = typer.Option(None, "--fault-genome"),
         source_dir: str = typer.Option(None, "--source-dir"),
         id_salt: str = typer.Option(None, "--id-salt"),
     ):
@@ -459,6 +460,7 @@ if typer is not None:
                 metadata_csv,
                 output_dir,
                 id_salt=id_salt,
+                fault_genome=fault_genome,
             )
         elif source_dir:
             manifests = build_outbreak_release(

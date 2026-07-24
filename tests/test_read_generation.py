@@ -35,7 +35,7 @@ source_id = "source-a"
 public_id = "Sample_a"
 implant = "LOW_COVERAGE"
 [samples.implant_parameters]
-read_fraction = 0.5
+read_fraction = 0.02
 [samples.expected_answers]
 species = "Klebsiella pneumoniae"
 """.strip()
@@ -53,7 +53,8 @@ species = "Klebsiella pneumoniae"
     assert (output / "COMPLETE.json").is_file()
     validation = provenance["samples"][0]["provenance"]["validation"]
     assert validation["status"] == "passed"
-    assert validation["read_fraction"] == 0.5
+    assert validation["read_fraction"] == 0.02
+    assert validation["expected_short_coverage"] == 0.6
     with gzip.open(output / "public/files/Sample_a_R1.fastq.gz", "rt") as handle:
         header = handle.readline()
     assert "Sample_a" in header

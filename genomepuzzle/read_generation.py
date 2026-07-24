@@ -8,12 +8,14 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from genomepuzzle.contract import failure_reason_for_implant
 from genomepuzzle.create_error import (
     concatenate_fastqs,
-    degrade_quality,
+    count_reads,
     subsample_paired_fastq,
+    subsample_paired_read_by_count,
     subsample_single_fastq,
-    truncate_fastq,
+    subsample_single_fastq_by_count,
 )
 from genomepuzzle.reads_release import package_read_release
 from genomepuzzle.release import ReleaseSpec, resolve_release_samples
@@ -25,17 +27,33 @@ ASSEMBLY_IMPLANTS = {
     "NORMAL",
     "NONE",
     "LOW_COVERAGE",
-    "POOR_QUALITY",
-    "TRUNCATED",
     "CONTAMINATED",
+    "ZERO_BYTE_R1",
+    "ZERO_BYTE_R2",
+    "MISSING_R1",
+    "MISSING_R2",
+    "TEN_READ_PAIRS",
+    "TRUNCATED_R1_TO_10_READS",
+    "TRUNCATED_R2_TO_10_READS",
+    "WRONG_ORGANISM",
 }
 HYBRID_IMPLANTS = {
     "NORMAL",
     "NONE",
     "LOW_SHORT_COVERAGE",
-    "LOW_LONG_COVERAGE",
-    "LONG_READ_QUALITY",
     "CONTAMINATED",
+    "ZERO_BYTE_R1",
+    "ZERO_BYTE_R2",
+    "MISSING_R1",
+    "MISSING_R2",
+    "TEN_READ_PAIRS",
+    "TRUNCATED_R1_TO_10_READS",
+    "TRUNCATED_R2_TO_10_READS",
+    "MISSING_LONG_READS",
+    "ZERO_BYTE_LONG_READS",
+    "TEN_LONG_READS",
+    "WRONG_ORGANISM",
+    "DISCORDANT_READ_SETS",
 }
 
 
@@ -237,43 +255,33 @@ def _generate_sample(
         seed=sample.random_seed,
         **short_parameters,
     )
+    contaminant_r1: Path | None = None
+    contaminant_r2: Path | None = None
     contaminant_long_for_hybrid: Path | None = None
     achieved: dict[str, object] = {
         "status": "passed",
-        "implant": sample.implant,
+        "fault_type": sample.implant,
         "checks": ["read_simulation", "implant_materialized"],
     }
-
-    if sample.implant in {"LOW_COVERAGE", "LOW_SHORT_COVERAGE"}:
-        fraction = float(_parameter(sample, "read_fraction", 0.15))
-        subsample_paired_fastq(
-            str(base_r1),
-            str(base_r2),
-            str(final_r1),
-            str(final_r2),
-            fraction,
-            sample.random_seed,
+    if sample.implant in {
+        "CONTAMINATED",
+        "WRONG_ORGANISM",
+        "DISCORDANT_READ_SETS",
+    }:
+        source_parameter = (
+            "replacement_source_id"
+            if sample.implant == "WRONG_ORGANISM"
+            else "contaminant_source_id"
         )
-        achieved["read_fraction"] = fraction
-    elif sample.implant == "POOR_QUALITY":
-        minimum = int(_parameter(sample, "min_quality", 5))
-        maximum = int(_parameter(sample, "max_quality", 14))
-        degrade_quality(
-            str(base_r1), str(final_r1), minimum, maximum, sample.random_seed
-        )
-        degrade_quality(
-            str(base_r2), str(final_r2), minimum, maximum, sample.random_seed + 1
-        )
-        achieved["quality_range"] = [minimum, maximum]
-    elif sample.implant == "TRUNCATED":
-        length = int(_parameter(sample, "read_length", 35))
-        truncate_fastq(str(base_r1), str(final_r1), length)
-        truncate_fastq(str(base_r2), str(final_r2), length)
-        achieved["read_length"] = length
-    elif sample.implant == "CONTAMINATED":
-        contaminant_id = sample.implant_parameters.get("contaminant_source_id")
+        contaminant_id = sample.implant_parameters.get(source_parameter)
         if not isinstance(contaminant_id, str) or not contaminant_id:
-            raise ValueError("CONTAMINATED requires contaminant_source_id")
+            raise ValueError(
+                "{0} requires {1}".format(sample.implant, source_parameter)
+            )
+        if contaminant_id == sample.source_id:
+            raise ValueError(
+                "{0} fault source must differ from target".format(sample.implant)
+            )
         (
             contaminant_r1,
             contaminant_r2,
@@ -288,21 +296,120 @@ def _generate_sample(
             long_quantity=str(_parameter(sample, "long_quantity", "10x")),
             sample_id=sample.sample_id,
         )
-        fraction = float(_parameter(sample, "contamination_fraction", 0.2))
+        achieved[source_parameter] = contaminant_id
+
+    if sample.implant in {"LOW_COVERAGE", "LOW_SHORT_COVERAGE"}:
+        fraction = float(_parameter(sample, "read_fraction", 0.02))
+        achieved_coverage = short_parameters["coverage"] * fraction
+        if achieved_coverage > 1.0:
+            raise ValueError(
+                "LOW_COVERAGE must produce no more than 1x expected coverage"
+            )
+        subsample_paired_fastq(
+            str(base_r1),
+            str(base_r2),
+            str(final_r1),
+            str(final_r2),
+            fraction,
+            sample.random_seed,
+        )
+        achieved["read_fraction"] = fraction
+        achieved["expected_short_coverage"] = round(achieved_coverage, 4)
+    elif sample.implant == "TEN_READ_PAIRS":
+        subsample_paired_read_by_count(
+            str(base_r1),
+            str(base_r2),
+            str(final_r1),
+            str(final_r2),
+            num_reads=10,
+            random_seed=sample.random_seed,
+        )
+        achieved["short_read_pairs"] = 10
+    elif sample.implant in {
+        "TRUNCATED_R1_TO_10_READS",
+        "TRUNCATED_R2_TO_10_READS",
+    }:
+        if sample.implant == "TRUNCATED_R1_TO_10_READS":
+            subsample_single_fastq_by_count(
+                str(base_r1),
+                str(final_r1),
+                num_reads=10,
+                random_seed=sample.random_seed,
+            )
+            shutil.copyfile(base_r2, final_r2)
+            truncated_role = "read_1"
+        else:
+            shutil.copyfile(base_r1, final_r1)
+            subsample_single_fastq_by_count(
+                str(base_r2),
+                str(final_r2),
+                num_reads=10,
+                random_seed=sample.random_seed,
+            )
+            truncated_role = "read_2"
+        achieved["truncated_role"] = truncated_role
+        achieved["truncated_role_reads"] = 10
+    elif sample.implant in {"ZERO_BYTE_R1", "ZERO_BYTE_R2"}:
+        _copy_pair(base_r1, base_r2, final_r1, final_r2)
+        empty_path = final_r1 if sample.implant == "ZERO_BYTE_R1" else final_r2
+        empty_path.write_bytes(b"")
+        achieved["zero_byte_role"] = (
+            "read_1" if sample.implant == "ZERO_BYTE_R1" else "read_2"
+        )
+        achieved["zero_byte_size"] = empty_path.stat().st_size
+    elif sample.implant in {"MISSING_R1", "MISSING_R2"}:
+        _copy_pair(base_r1, base_r2, final_r1, final_r2)
+        missing_path = final_r1 if sample.implant == "MISSING_R1" else final_r2
+        missing_path.unlink()
+        achieved["missing_role"] = (
+            "read_1" if sample.implant == "MISSING_R1" else "read_2"
+        )
+    elif sample.implant == "CONTAMINATED":
+        assert contaminant_r1 is not None and contaminant_r2 is not None
+        fraction = float(_parameter(sample, "contamination_fraction", 0.5))
+        if not 0.3 <= fraction <= 0.9:
+            raise ValueError(
+                "contamination_fraction must be between 0.30 and 0.90"
+            )
+        clean_r1 = work_dir / ".{0}_clean_R1.fastq.gz".format(sample.source_id)
+        clean_r2 = work_dir / ".{0}_clean_R2.fastq.gz".format(sample.source_id)
         dirty_r1 = work_dir / ".{0}_dirty_R1.fastq.gz".format(sample.source_id)
         dirty_r2 = work_dir / ".{0}_dirty_R2.fastq.gz".format(sample.source_id)
+        subsample_paired_fastq(
+            str(base_r1),
+            str(base_r2),
+            str(clean_r1),
+            str(clean_r2),
+            1 - fraction,
+            sample.random_seed,
+        )
         subsample_paired_fastq(
             str(contaminant_r1),
             str(contaminant_r2),
             str(dirty_r1),
             str(dirty_r2),
             fraction,
-            sample.random_seed,
+            sample.random_seed + 1,
         )
-        concatenate_fastqs([str(base_r1), str(dirty_r1)], str(final_r1))
-        concatenate_fastqs([str(base_r2), str(dirty_r2)], str(final_r2))
-        achieved["contamination_fraction"] = fraction
-        achieved["contaminant_source_id"] = contaminant_id
+        concatenate_fastqs([str(clean_r1), str(dirty_r1)], str(final_r1))
+        concatenate_fastqs([str(clean_r2), str(dirty_r2)], str(final_r2))
+        clean_pairs = count_reads(str(clean_r1))
+        contaminant_pairs = count_reads(str(dirty_r1))
+        achieved_fraction = contaminant_pairs / (clean_pairs + contaminant_pairs)
+        if abs(achieved_fraction - fraction) > 0.03:
+            raise ValueError(
+                "achieved contamination fraction differs from requested fraction"
+            )
+        achieved["requested_contamination_fraction"] = fraction
+        achieved["achieved_contamination_fraction"] = round(
+            achieved_fraction, 6
+        )
+        achieved["clean_pairs"] = clean_pairs
+        achieved["contaminant_pairs"] = contaminant_pairs
+    elif sample.implant == "WRONG_ORGANISM":
+        assert contaminant_r1 is not None and contaminant_r2 is not None
+        _copy_pair(contaminant_r1, contaminant_r2, final_r1, final_r2)
+        achieved["replacement_fraction"] = 1.0
     else:
         _copy_pair(base_r1, base_r2, final_r1, final_r2)
 
@@ -313,49 +420,70 @@ def _generate_sample(
         _simulate_long_reads(
             reference, base_long, seed=sample.random_seed + 1, quantity=quantity
         )
-        if sample.implant == "LOW_LONG_COVERAGE":
-            fraction = float(_parameter(sample, "read_fraction", 0.15))
-            subsample_single_fastq(
+        if sample.implant == "TEN_LONG_READS":
+            subsample_single_fastq_by_count(
                 str(base_long),
                 str(final_long),
-                fraction,
-                sample.random_seed,
+                num_reads=10,
+                random_seed=sample.random_seed,
             )
-            achieved["long_read_fraction"] = fraction
-        elif sample.implant == "LONG_READ_QUALITY":
-            minimum = int(_parameter(sample, "min_quality", 5))
-            maximum = int(_parameter(sample, "max_quality", 14))
-            degrade_quality(
-                str(base_long),
-                str(final_long),
-                minimum,
-                maximum,
-                sample.random_seed,
-            )
-            achieved["long_quality_range"] = [minimum, maximum]
+            achieved["long_read_count"] = 10
+        elif sample.implant == "ZERO_BYTE_LONG_READS":
+            final_long.write_bytes(b"")
+            achieved["zero_byte_role"] = "long_reads"
+            achieved["zero_byte_size"] = final_long.stat().st_size
+        elif sample.implant == "MISSING_LONG_READS":
+            achieved["missing_role"] = "long_reads"
         elif sample.implant == "CONTAMINATED":
             if contaminant_long_for_hybrid is None:
                 raise RuntimeError("hybrid contaminant long reads were not generated")
+            clean_long = work_dir / ".{0}_clean_long.fastq.gz".format(
+                sample.source_id
+            )
             dirty_long = work_dir / ".{0}_dirty_long.fastq.gz".format(
                 sample.source_id
             )
-            fraction = float(_parameter(sample, "contamination_fraction", 0.2))
+            fraction = float(_parameter(sample, "contamination_fraction", 0.5))
+            subsample_single_fastq(
+                str(base_long),
+                str(clean_long),
+                1 - fraction,
+                sample.random_seed,
+            )
             subsample_single_fastq(
                 str(contaminant_long_for_hybrid),
                 str(dirty_long),
                 fraction,
-                sample.random_seed,
+                sample.random_seed + 1,
             )
-            concatenate_fastqs([str(base_long), str(dirty_long)], str(final_long))
+            concatenate_fastqs([str(clean_long), str(dirty_long)], str(final_long))
+            clean_long_count = count_reads(str(clean_long))
+            contaminant_long_count = count_reads(str(dirty_long))
+            long_fraction = contaminant_long_count / (
+                clean_long_count + contaminant_long_count
+            )
+            if abs(long_fraction - fraction) > 0.05:
+                raise ValueError(
+                    "achieved long-read contamination differs from requested fraction"
+                )
+            achieved["achieved_long_contamination_fraction"] = round(
+                long_fraction, 6
+            )
+        elif sample.implant in {"WRONG_ORGANISM", "DISCORDANT_READ_SETS"}:
+            if contaminant_long_for_hybrid is None:
+                raise RuntimeError("hybrid contaminant long reads were not generated")
+            shutil.copyfile(contaminant_long_for_hybrid, final_long)
+            achieved["long_read_source"] = "contaminant"
         else:
             shutil.copyfile(base_long, final_long)
 
     answers = dict(sample.expected_answers)
     answers.setdefault(
-        "qc", "pass" if sample.implant in {"NORMAL", "NONE"} else "fail"
+        "qc_status", "PASS" if sample.implant in {"NORMAL", "NONE"} else "FAIL"
     )
     answers.setdefault(
-        "error", "none" if sample.implant in {"NORMAL", "NONE"} else sample.implant
+        "failure_reason",
+        failure_reason_for_implant(spec.exercise, sample.implant),
     )
     if "species" not in answers:
         species = sample.implant_parameters.get("species")

@@ -45,6 +45,7 @@ public_id = "Sample_2"
 implant = "LOW_COVERAGE"
 [samples.implant_parameters]
 read_fraction = 0.5
+source_coverage = 1.0
 """.strip()
         + "\n",
         encoding="utf-8",
@@ -68,3 +69,51 @@ read_fraction = 0.5
     assert simulation["samples"][0]["shared_mutations"] == 10
     assert simulation["samples"][0]["private_mutations"] == 2
     assert simulation["samples"][1]["total_mutations"] == 12
+
+
+def test_native_outbreak_generates_one_external_contaminant(tmp_path, monkeypatch):
+    reference = tmp_path / "reference.fasta"
+    reference.write_text(">reference\n" + "ACGT" * 1000 + "\n")
+    contaminant = tmp_path / "ecoli.fasta"
+    contaminant.write_text(">ecoli\n" + "TGCA" * 1000 + "\n")
+    metadata = tmp_path / "metadata.csv"
+    metadata.write_text(
+        "Sample,Cluster,SPECIES\n"
+        "tip-1,A,Klebsiella pneumoniae\n",
+        encoding="utf-8",
+    )
+    spec_path = tmp_path / "outbreak.toml"
+    spec_path.write_text(
+        """
+release_id = "external-contaminant"
+exercise = "outbreak"
+mode = "practice"
+
+[[samples]]
+source_id = "tip-1"
+public_id = "Sample_1"
+implant = "CONTAMINATED"
+[samples.implant_parameters]
+contaminant_source_id = "external-ecoli"
+contamination_fraction = 0.50
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "genomepuzzle.outbreak_generation._simulate_short_reads", _fake_short
+    )
+    output = tmp_path / "release"
+    generate_outbreak_release(
+        load_release_spec(spec_path),
+        reference,
+        metadata,
+        output,
+        fault_genome=contaminant,
+    )
+    simulation = json.loads((output / "build/outbreak_simulation.json").read_text())
+    provenance = json.loads((output / "private/provenance.json").read_text())
+    assert simulation["external_fault_source"]["source_id"] == "external-ecoli"
+    achieved = provenance["samples"][0]["provenance"]
+    assert achieved["achieved_contamination_fraction"] == 0.5
+    assert achieved["validation"]["fault_type"] == "CONTAMINATED"

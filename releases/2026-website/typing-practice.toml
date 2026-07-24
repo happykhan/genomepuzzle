@@ -25,6 +25,12 @@ public_id = "Sample_TP003"
 [[samples]]
 source_id = "GCA_902156185.1"
 public_id = "Sample_TP004"
-implant = "FRAGMENTED"
+implant = "ZERO_BYTE_ASSEMBLY"
+
+[[samples]]
+source_id = "GCA_902156205.1"
+public_id = "Sample_TP005"
+implant = "MIXED_CONTIGS"
 [samples.implant_parameters]
-fragment_size = 1000
+contaminant_source_id = "GCF_000005845.2"
+contamination_fraction = 0.50

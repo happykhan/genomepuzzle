@@ -14,68 +14,49 @@ source_dir = "../../cache/assemblies"
 source_id = "GCA_902156115.1"
 [samples.expected_answers]
 species = "Klebsiella pneumoniae"
-qc = "PASS"
-error = ""
 [[samples]]
 source_id = "GCA_902156205.1"
 [samples.expected_answers]
 species = "Klebsiella pneumoniae"
-qc = "PASS"
-error = ""
 [[samples]]
 source_id = "GCA_902156055.1"
 [samples.expected_answers]
 species = "Klebsiella pneumoniae"
-qc = "PASS"
-error = ""
 [[samples]]
 source_id = "GCA_902156095.1"
 [samples.expected_answers]
 species = "Klebsiella pneumoniae"
-qc = "PASS"
-error = ""
 [[samples]]
 source_id = "GCA_902156125.1"
 [samples.expected_answers]
 species = "Klebsiella pneumoniae"
-qc = "PASS"
-error = ""
 [[samples]]
 source_id = "GCA_902156825.1"
 [samples.expected_answers]
 species = "Klebsiella variicola subsp. variicola"
-qc = "PASS"
-error = ""
 [[samples]]
 source_id = "GCA_902155925.1"
 [samples.expected_answers]
 species = "Klebsiella pneumoniae"
-qc = "PASS"
-error = ""
 [[samples]]
 source_id = "GCA_902155945.1"
+implant = "MISSING_LONG_READS"
 [samples.expected_answers]
 species = "Klebsiella pneumoniae"
-qc = "PASS"
-error = ""
 
 [[samples]]
 source_id = "GCA_902156185.1"
-implant = "LOW_LONG_COVERAGE"
+implant = "DISCORDANT_READ_SETS"
 [samples.implant_parameters]
-read_fraction = 0.15
+contaminant_source_id = "GCF_000005845.2"
 [samples.expected_answers]
 species = "Klebsiella pneumoniae"
-qc = "FAIL"
-error = "LOW_LONG_COVERAGE"
 
 [[samples]]
 source_id = "GCA_902156085.1"
 implant = "CONTAMINATED"
 [samples.implant_parameters]
-contaminant_source_id = "GCA_902156075.1"
-contamination_fraction = 0.20
+contaminant_source_id = "GCF_000005845.2"
+contamination_fraction = 0.50
 [samples.expected_answers]
 species = "Klebsiella pneumoniae"
-qc = "FAIL"
-error = "CONTAMINATED"

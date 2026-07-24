@@ -9,6 +9,7 @@ pass_threshold = 0.8
 
 [inputs]
 base_genome = "../../cache/assemblies/GCA_902156115.1.fasta"
+fault_genome = "../../cache/assemblies/GCF_000005845.2.fasta"
 metadata_csv = "outbreak-challenge-metadata.csv"
 
 [[samples]]
@@ -41,18 +42,18 @@ source_id = "challenge-tip-13"
 source_id = "challenge-tip-14"
 [[samples]]
 source_id = "challenge-tip-15"
+implant = "ZERO_BYTE_R1"
 [[samples]]
 source_id = "challenge-tip-16"
+implant = "MISSING_R2"
 
 [[samples]]
 source_id = "challenge-tip-17"
-implant = "LOW_COVERAGE"
-[samples.implant_parameters]
-read_fraction = 0.15
+implant = "TEN_READ_PAIRS"
 
 [[samples]]
 source_id = "challenge-tip-18"
 implant = "CONTAMINATED"
 [samples.implant_parameters]
-contaminant_source_id = "challenge-tip-02"
-contamination_fraction = 0.10
+contaminant_source_id = "external-ecoli"
+contamination_fraction = 0.50

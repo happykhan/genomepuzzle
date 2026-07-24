@@ -1,4 +1,4 @@
-# GenomePuzzle release contract v2
+# GenomePuzzle release contract 2.1
 
 The release directory is the only interface between GenomePuzzle and
 GHRUPuzzles:
@@ -41,10 +41,16 @@ The JSON Schemas are packaged under `genomepuzzle/schemas/`:
 
 GHRUPuzzles owns storage and server-side implementations of safe scorer types.
 GenomePuzzle owns dataset truth, submission fields, scorer configuration,
-instructions, implants, provenance and biological validation.
+instructions, private faults, provenance and biological validation.
 
 The website must not duplicate exercise columns, infer answer fields from
 whatever keys happen to occur, or perform biological generation.
+
+Contract 2.1 standardises `qc_status` and `failure_reason` across exercises.
+`scoring_policy.json` uses `score_when` to exclude unavailable analytical
+answers and failed outbreak samples. `implant_manifest.json` is retained as
+the artifact filename for compatibility, but each entry uses the canonical
+private fields `fault_type`, `failure_reason` and `parameters`.
 
 ## File roles
 
@@ -54,6 +60,10 @@ Per-sample file roles are stable:
 - `read_1`;
 - `read_2`; and
 - `long_reads`.
+
+Normal samples require all roles for their exercise. A role may be absent or
+zero bytes only when the private `fault_type` declares that exact operation;
+the bundle validator otherwise rejects it.
 
 The website maps these roles to authenticated download links after import.
 Storage URLs are not embedded in the generated bundle.

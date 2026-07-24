@@ -8,10 +8,14 @@ long-read data or disagreement between evidence sources.
 
 | Implant | Important parameters | Intended signal |
 | --- | --- | --- |
-| `LOW_SHORT_COVERAGE` | `read_fraction` | Weak Illumina support |
-| `LOW_LONG_COVERAGE` | `read_fraction` | Weak long-read support |
-| `LONG_READ_QUALITY` | `min_quality`, `max_quality` | Degraded long-read evidence |
-| `CONTAMINATED` | `contaminant_source_id`, `contamination_fraction` | Mixture in both modalities |
+| `LOW_SHORT_COVERAGE` | `read_fraction` | No more than approximately 1× Illumina depth |
+| `TEN_READ_PAIRS` | — | Exactly ten short-read pairs |
+| `MISSING_LONG_READS` | — | Long-read role is absent |
+| `ZERO_BYTE_LONG_READS` | — | Long-read role is a literal zero-byte file |
+| `TEN_LONG_READS` | — | Exactly ten long reads |
+| `CONTAMINATED` | `contaminant_source_id`, `contamination_fraction` | A 30–90% different-species mixture in both modalities |
+| `WRONG_ORGANISM` | `replacement_source_id` | Both modalities are another organism |
+| `DISCORDANT_READ_SETS` | `contaminant_source_id` | Short and long reads are different organisms |
 
 Normal long-read quantity defaults to `10x` and can be overridden with
 `long_quantity`.
@@ -23,7 +27,7 @@ implant = "CONTAMINATED"
 
 [samples.implant_parameters]
 contaminant_source_id = "GCA_000000004.1"
-contamination_fraction = 0.20
+contamination_fraction = 0.50
 long_quantity = "20x"
 ```
 
@@ -33,11 +37,12 @@ material participants actually receive.
 
 ## Outputs
 
-Every sample must have all three roles before sealing:
+Normal samples must have all three roles before sealing:
 
 - `read_1`;
 - `read_2`; and
 - `long_reads`.
 
-GenomePuzzle rejects incomplete triplets and any troublesome sample without
-passing implant evidence.
+GenomePuzzle rejects incomplete triplets unless the exact private
+`fault_type` declares the missing role. Every fault requires passing
+materialisation evidence.

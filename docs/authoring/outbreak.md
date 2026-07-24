@@ -37,9 +37,8 @@ validated external simulation process.
 
 ## Interpretation
 
-Cluster truth and QC truth are deliberately separate. A low-coverage or mixed
-sample can have a known biological cluster but still be expected to receive an
-`exclude` or `review` decision.
+Cluster truth and QC truth are deliberately separate. A failed sample can have
+a known biological cluster while being excluded from partition scoring.
 
 Cluster labels are scored as a partition. Participants do not need to reproduce
 the organiser's arbitrary label names.
@@ -49,8 +48,12 @@ the organiser's arbitrary label names.
 | Implant | Important parameters | Intended signal |
 | --- | --- | --- |
 | `LOW_COVERAGE` | `read_fraction` | An isolate unsuitable for confident placement |
-| `CONTAMINATED` | `contaminant_source_id`, `contamination_fraction` | A mixed isolate |
+| `TEN_READ_PAIRS` | — | Exactly ten paired reads |
+| `ZERO_BYTE_R1`, `ZERO_BYTE_R2` | — | A required mate is a literal zero-byte file |
+| `MISSING_R1`, `MISSING_R2` | — | A required mate is absent |
+| `CONTAMINATED` | `contaminant_source_id`, `contamination_fraction` | A 30–90% different-species mixture |
+| `WRONG_ORGANISM` | `replacement_source_id` | Complete replacement with another organism |
 
-`NORMAL` and `NONE` leave the simulated or pre-simulated pair intact. An
-implanted sample keeps its biological cluster truth, while its expected
-`qc_decision` becomes `exclude`.
+`NORMAL` and `NONE` leave the simulated or pre-simulated pair intact. A
+faulted sample keeps its biological cluster truth, while its expected
+`qc_status` becomes `FAIL` and it is omitted from partition scoring.

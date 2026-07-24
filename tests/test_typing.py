@@ -26,7 +26,7 @@ public_id = "Sample_mixed"
 implant = "MIXED_CONTIGS"
 [samples.implant_parameters]
 contaminant_source_id = "contaminant"
-contamination_fraction = 0.25
+contamination_fraction = 0.30
 
 [[samples]]
 source_id = "target"
@@ -51,7 +51,7 @@ def test_build_typing_release_is_anonymous_and_tracks_truth(tmp_path):
     sources.mkdir()
     (sources / "clean.fasta").write_text(">ACCESSION secret\n" + "A" * 250 + "\n")
     (sources / "target.fasta").write_text(">target\n" + "C" * 250 + "\n")
-    (sources / "contaminant.fasta").write_text(">contaminant\n" + "G" * 100 + "\n")
+    (sources / "contaminant.fasta").write_text(">contaminant\n" + "G" * 250 + "\n")
     spec_path = tmp_path / "typing.toml"
     _write_spec(spec_path)
     release_dir = tmp_path / "release"
@@ -72,7 +72,7 @@ def test_build_typing_release_is_anonymous_and_tracks_truth(tmp_path):
     ]
     assert "source_id" not in json.dumps(public)
     assert "contaminant" not in json.dumps(public)
-    assert private["samples"][1]["implant"]["type"] == "MIXED_CONTIGS"
+    assert private["samples"][1]["fault"]["fault_type"] == "MIXED_CONTIGS"
     assert private["samples"][1]["provenance"]["contaminant_source_file"].endswith(
         "contaminant.fasta"
     )
@@ -84,10 +84,10 @@ def test_build_typing_release_is_anonymous_and_tracks_truth(tmp_path):
         release_dir / "public/files/Sample_fragmented.fasta"
     )
     assert all(name.startswith("Sample_clean_contig_") for name, _ in clean_records)
-    assert sum(len(seq) for _, seq in mixed_records) == 312
+    assert sum(len(seq) for _, seq in mixed_records) == 357
     mixed_validation = private["samples"][1]["provenance"]["validation"]
-    assert mixed_validation["contaminant_bases"] == 62
-    assert mixed_validation["achieved_contamination_fraction"] == 0.248
+    assert mixed_validation["contaminant_bases"] == 107
+    assert mixed_validation["achieved_contamination_fraction"] == 0.29971989
     assert [len(seq) for _, seq in fragmented_records] == [100, 100, 50]
 
 
@@ -106,3 +106,40 @@ def test_build_typing_release_rejects_nonempty_destination(tmp_path):
         build_typing_release(
             load_release_spec(spec_path), sources, release_dir, analyser=lambda _: {}
         )
+
+
+def test_zero_byte_typing_fault_skips_kleborate_and_is_sealed(tmp_path):
+    sources = tmp_path / "sources"
+    sources.mkdir()
+    (sources / "source.fasta").write_text(">source\n" + "A" * 100 + "\n")
+    spec_path = tmp_path / "typing.toml"
+    spec_path.write_text(
+        """
+release_id = "zero-byte-typing"
+exercise = "typing"
+mode = "practice"
+
+[[samples]]
+source_id = "source"
+public_id = "Sample_empty"
+implant = "ZERO_BYTE_ASSEMBLY"
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    analyser_calls = []
+    output = tmp_path / "release"
+    build_typing_release(
+        load_release_spec(spec_path),
+        sources,
+        output,
+        analyser=lambda path: analyser_calls.append(path) or {},
+    )
+    assert analyser_calls == []
+    assert (output / "public/files/Sample_empty.fasta").stat().st_size == 0
+    answers = json.loads((output / "private/answer_key.json").read_text())
+    assert answers["samples"][0]["answers"] == {
+        "qc_status": "FAIL",
+        "failure_reason": "EMPTY_FILE",
+    }
+    assert (output / "COMPLETE.json").is_file()

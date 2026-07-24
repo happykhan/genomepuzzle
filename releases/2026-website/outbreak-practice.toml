@@ -26,9 +26,8 @@ public_id = "Sample_OP004"
 [[samples]]
 source_id = "practice-tip-05"
 public_id = "Sample_OP005"
+implant = "ZERO_BYTE_R2"
 [[samples]]
 source_id = "practice-tip-06"
 public_id = "Sample_OP006"
-implant = "LOW_COVERAGE"
-[samples.implant_parameters]
-read_fraction = 0.15
+implant = "TEN_READ_PAIRS"

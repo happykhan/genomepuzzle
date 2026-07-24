@@ -140,6 +140,13 @@ def build_release_plan(
                     _required_input(spec, spec_path, "base_genome"),
                 ]
             )
+            if spec.inputs.get("fault_genome"):
+                build_command.extend(
+                    [
+                        "--fault-genome",
+                        _required_input(spec, spec_path, "fault_genome"),
+                    ]
+                )
         else:
             build_command.extend(
                 [

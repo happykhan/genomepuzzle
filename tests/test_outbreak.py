@@ -44,6 +44,7 @@ public_id = "Sample_low"
 implant = "LOW_COVERAGE"
 [samples.implant_parameters]
 read_fraction = 0.5
+source_coverage = 1.0
 
 [[samples]]
 source_id = "tip1"
@@ -72,7 +73,11 @@ contamination_fraction = 0.5
         "Host": "Human",
         "Location": "Oxford",
     }
-    assert private["samples"][1]["expected_answers"]["qc_decision"] == "exclude"
+    assert private["samples"][1]["expected_answers"]["qc_status"] == "FAIL"
+    assert (
+        private["samples"][1]["expected_answers"]["failure_reason"]
+        == "LOW_COVERAGE"
+    )
     assert private["samples"][2]["expected_answers"]["cluster"] == "1"
 
     with open(output / "public/sample_sheet.csv", encoding="utf-8") as handle:

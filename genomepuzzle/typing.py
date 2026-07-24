@@ -17,10 +17,16 @@ from genomepuzzle.release import (
     sha256_file,
     write_release_manifests,
 )
-from genomepuzzle.contract import complete_release
+from genomepuzzle.contract import complete_release, failure_reason_for_implant
 
 
-TYPING_IMPLANTS = {"NORMAL", "NONE", "FRAGMENTED", "MIXED_CONTIGS"}
+TYPING_IMPLANTS = {
+    "NORMAL",
+    "NONE",
+    "FRAGMENTED",
+    "MIXED_CONTIGS",
+    "ZERO_BYTE_ASSEMBLY",
+}
 KLEBORATE_FIELDS = {
     "species": "enterobacterales__species__species",
     "st": "klebsiella_pneumo_complex__mlst__ST",
@@ -137,15 +143,18 @@ def mix_records(
     fraction: float,
     seed: int,
 ) -> list[tuple[str, str]]:
-    """Add contaminant contigs up to a target fraction of target assembly bases."""
+    """Add contaminant contigs to an achieved fraction of final assembly bases."""
 
-    if not 0 < fraction <= 1:
-        raise ValueError("contamination_fraction must be greater than 0 and at most 1")
+    if not 0.3 <= fraction <= 0.5:
+        raise ValueError(
+            "typing contamination_fraction must be between 0.30 and 0.50"
+        )
     target = list(target_records)
     contaminant = list(contaminant_records)
     if not contaminant:
         raise ValueError("contaminant FASTA has no records")
-    required_bases = max(1, round(sum(len(seq) for _, seq in target) * fraction))
+    target_bases = sum(len(seq) for _, seq in target)
+    required_bases = max(1, round(target_bases * fraction / (1 - fraction)))
     rng = random.Random(seed)
     rng.shuffle(contaminant)
     selected = []
@@ -247,9 +256,11 @@ def _build_typing_sample(
             raise ValueError(
                 "MIXED_CONTIGS requires implant_parameters.contaminant_source_id"
             )
+        if contaminant_source_id == sample.source_id:
+            raise ValueError("MIXED_CONTIGS contaminant must differ from target")
         contaminant_path = _source_path(source_dir, contaminant_source_id)
         fraction = float(
-            sample.implant_parameters.get("contamination_fraction", 0.1)
+            sample.implant_parameters.get("contamination_fraction", 0.5)
         )
         records = mix_records(
             records,
@@ -259,21 +270,54 @@ def _build_typing_sample(
         )
         provenance["contaminant_source_file"] = str(contaminant_path)
         provenance["contaminant_source_sha256"] = sha256_file(contaminant_path)
+    elif sample.implant == "WRONG_ORGANISM":
+        replacement_source_id = sample.implant_parameters.get(
+            "replacement_source_id"
+        )
+        if not isinstance(replacement_source_id, str) or not replacement_source_id:
+            raise ValueError(
+                "WRONG_ORGANISM requires implant_parameters.replacement_source_id"
+            )
+        if replacement_source_id == sample.source_id:
+            raise ValueError("WRONG_ORGANISM replacement must differ from target")
+        replacement_path = _source_path(source_dir, replacement_source_id)
+        records = read_fasta(replacement_path)
+        provenance["replacement_source_file"] = str(replacement_path)
+        provenance["replacement_source_sha256"] = sha256_file(replacement_path)
 
     output_path = files_dir / "{0}.fasta".format(sample.sample_id)
-    write_anonymous_fasta(output_path, records, sample.sample_id)
-    expected = (
-        dict(analyser(output_path))
-        if analyser
-        else {"analysis_status": "pending_kleborate"}
+    if sample.implant == "ZERO_BYTE_ASSEMBLY":
+        output_path.touch()
+        expected = {}
+    else:
+        write_anonymous_fasta(output_path, records, sample.sample_id)
+        expected = (
+            dict(analyser(output_path))
+            if analyser
+            else {"analysis_status": "pending_kleborate"}
+        )
+    expected["qc_status"] = (
+        "PASS" if sample.implant in {"NORMAL", "NONE"} else "FAIL"
+    )
+    expected["failure_reason"] = failure_reason_for_implant(
+        "typing", sample.implant
     )
     validation: dict[str, object] = {
         "status": "passed",
-        "checks": ["anonymous_fasta", "reference_analysis"],
+        "fault_type": sample.implant,
+        "checks": (
+            ["zero_byte_file", "implant_materialized"]
+            if sample.implant == "ZERO_BYTE_ASSEMBLY"
+            else ["anonymous_fasta", "reference_analysis"]
+        ),
         "original_contigs": original_contigs,
         "original_bases": original_bases,
-        "final_contigs": len(records),
-        "final_bases": sum(len(sequence) for _, sequence in records),
+        "final_contigs": 0 if sample.implant == "ZERO_BYTE_ASSEMBLY" else len(records),
+        "final_bases": (
+            0
+            if sample.implant == "ZERO_BYTE_ASSEMBLY"
+            else sum(len(sequence) for _, sequence in records)
+        ),
     }
     if sample.implant == "FRAGMENTED":
         fragment_size = int(sample.implant_parameters.get("fragment_size", 1000))
@@ -285,10 +329,12 @@ def _build_typing_sample(
         if contaminant_bases <= 0:
             raise ValueError("MIXED_CONTIGS did not add contaminant sequence")
         requested_fraction = float(
-            sample.implant_parameters.get("contamination_fraction", 0.1)
+            sample.implant_parameters.get("contamination_fraction", 0.5)
         )
-        achieved_fraction = contaminant_bases / original_bases
-        if abs(achieved_fraction - requested_fraction) > 1 / original_bases:
+        achieved_fraction = contaminant_bases / int(validation["final_bases"])
+        if abs(achieved_fraction - requested_fraction) > 1 / int(
+            validation["final_bases"]
+        ):
             raise ValueError(
                 "MIXED_CONTIGS achieved fraction differs from requested fraction"
             )
@@ -297,6 +343,9 @@ def _build_typing_sample(
             achieved_fraction, 8
         )
         validation["checks"].append("contamination_fraction")
+    if sample.implant == "WRONG_ORGANISM":
+        validation["replacement_fraction"] = 1.0
+        validation["checks"].append("complete_organism_replacement")
     provenance["validation"] = validation
     return ReleaseArtifactSample(
         sample_id=sample.sample_id,

@@ -15,7 +15,7 @@ from typing import Any, Mapping, Sequence
 from genomepuzzle.sequence_io import is_anonymous_fastq_header
 
 
-BUNDLE_SCHEMA_VERSION = "2.0"
+BUNDLE_SCHEMA_VERSION = "2.1"
 SAMPLE_ID_FIELDS = {"sample_id", "sample", "id", "public_name"}
 PENDING_VALUES = {"pending", "pending_analysis", "pending_kleborate"}
 PRIVATE_KEY_NAMES = {
@@ -24,6 +24,8 @@ PRIVATE_KEY_NAMES = {
     "answer_key",
     "expected",
     "expected_answers",
+    "fault",
+    "fault_type",
     "implant",
     "implant_type",
     "reference_accession",
@@ -44,8 +46,10 @@ def _field(
     scored: bool = True,
     scorer: str = "exact",
     aliases: Sequence[str] | None = None,
+    allowed_values: Sequence[str] | None = None,
+    normalizer: str = "trim_casefold",
 ) -> dict[str, Any]:
-    return {
+    result = {
         "name": name,
         "label": label,
         "description": description,
@@ -55,7 +59,246 @@ def _field(
         "scored": scored and not identifier,
         "scorer": "identifier" if identifier else scorer,
         "aliases": list(aliases or []),
+        "normalizer": "identifier" if identifier else normalizer,
     }
+    if allowed_values is not None:
+        result["allowed_values"] = list(allowed_values)
+    return result
+
+
+FAILURE_REASONS_BY_EXERCISE: dict[str, tuple[str, ...]] = {
+    "typing": (
+        "NONE",
+        "EMPTY_FILE",
+        "CONTAMINATED",
+        "WRONG_ORGANISM",
+        "EXTREME_FRAGMENTATION",
+    ),
+    "assembly": (
+        "NONE",
+        "EMPTY_FILE",
+        "MISSING_MATE",
+        "TOO_FEW_READS",
+        "LOW_COVERAGE",
+        "CONTAMINATED",
+        "WRONG_ORGANISM",
+    ),
+    "hybrid": (
+        "NONE",
+        "EMPTY_FILE",
+        "MISSING_MATE",
+        "TOO_FEW_READS",
+        "LOW_COVERAGE",
+        "MISSING_LONG_READS",
+        "TOO_FEW_LONG_READS",
+        "CONTAMINATED",
+        "WRONG_ORGANISM",
+        "DISCORDANT_READ_SETS",
+    ),
+    "outbreak": (
+        "NONE",
+        "EMPTY_FILE",
+        "MISSING_MATE",
+        "TOO_FEW_READS",
+        "LOW_COVERAGE",
+        "CONTAMINATED",
+        "WRONG_ORGANISM",
+    ),
+}
+
+IMPLANT_FAILURE_REASONS: dict[str, dict[str, str]] = {
+    "typing": {
+        "EMPTY_FILE": "EMPTY_FILE",
+        "ZERO_BYTE_ASSEMBLY": "EMPTY_FILE",
+        "WRONG_ORGANISM": "WRONG_ORGANISM",
+        "FRAGMENTED": "EXTREME_FRAGMENTATION",
+        "MIXED_CONTIGS": "CONTAMINATED",
+    },
+    "assembly": {
+        "EMPTY_R1": "EMPTY_FILE",
+        "EMPTY_R2": "EMPTY_FILE",
+        "ZERO_BYTE_R1": "EMPTY_FILE",
+        "ZERO_BYTE_R2": "EMPTY_FILE",
+        "MISSING_R1": "MISSING_MATE",
+        "MISSING_R2": "MISSING_MATE",
+        "TEN_READ_PAIRS": "TOO_FEW_READS",
+        "TRUNCATED_R1_TO_10_READS": "TOO_FEW_READS",
+        "TRUNCATED_R2_TO_10_READS": "TOO_FEW_READS",
+        "LOW_COVERAGE": "LOW_COVERAGE",
+        "CONTAMINATED": "CONTAMINATED",
+        "WRONG_ORGANISM": "WRONG_ORGANISM",
+    },
+    "hybrid": {
+        "EMPTY_R1": "EMPTY_FILE",
+        "EMPTY_R2": "EMPTY_FILE",
+        "ZERO_BYTE_R1": "EMPTY_FILE",
+        "ZERO_BYTE_R2": "EMPTY_FILE",
+        "MISSING_R1": "MISSING_MATE",
+        "MISSING_R2": "MISSING_MATE",
+        "TEN_READ_PAIRS": "TOO_FEW_READS",
+        "TRUNCATED_R1_TO_10_READS": "TOO_FEW_READS",
+        "TRUNCATED_R2_TO_10_READS": "TOO_FEW_READS",
+        "LOW_COVERAGE": "LOW_COVERAGE",
+        "LOW_SHORT_COVERAGE": "LOW_COVERAGE",
+        "MISSING_LONG_READS": "MISSING_LONG_READS",
+        "ZERO_BYTE_LONG_READS": "EMPTY_FILE",
+        "TEN_LONG_READS": "TOO_FEW_LONG_READS",
+        "CONTAMINATED": "CONTAMINATED",
+        "WRONG_ORGANISM": "WRONG_ORGANISM",
+        "DISCORDANT_READ_SETS": "DISCORDANT_READ_SETS",
+    },
+    "outbreak": {
+        "EMPTY_R1": "EMPTY_FILE",
+        "EMPTY_R2": "EMPTY_FILE",
+        "ZERO_BYTE_R1": "EMPTY_FILE",
+        "ZERO_BYTE_R2": "EMPTY_FILE",
+        "MISSING_R1": "MISSING_MATE",
+        "MISSING_R2": "MISSING_MATE",
+        "TEN_READ_PAIRS": "TOO_FEW_READS",
+        "TRUNCATED_R1_TO_10_READS": "TOO_FEW_READS",
+        "TRUNCATED_R2_TO_10_READS": "TOO_FEW_READS",
+        "LOW_COVERAGE": "LOW_COVERAGE",
+        "CONTAMINATED": "CONTAMINATED",
+        "WRONG_ORGANISM": "WRONG_ORGANISM",
+    },
+}
+
+
+def failure_reason_for_implant(exercise: str, implant: str) -> str:
+    """Return the stable participant-facing reason for a private fault implant."""
+
+    normalized = implant.strip().upper()
+    if normalized in {"NORMAL", "NONE"}:
+        return "NONE"
+    try:
+        reason = IMPLANT_FAILURE_REASONS[exercise][normalized]
+    except KeyError as exc:
+        raise ValueError(
+            "no participant failure reason maps to {0} implant {1}".format(
+                exercise, normalized
+            )
+        ) from exc
+    if reason not in FAILURE_REASONS_BY_EXERCISE[exercise]:
+        raise RuntimeError("implant failure mapping is outside the exercise vocabulary")
+    return reason
+
+
+def expected_participant_roles(exercise: str, fault_type: str) -> set[str]:
+    """Return the exact public file roles permitted for one private fault."""
+
+    roles = {
+        "typing": {"assembly"},
+        "assembly": {"read_1", "read_2"},
+        "hybrid": {"read_1", "read_2", "long_reads"},
+        "outbreak": {"read_1", "read_2"},
+    }[exercise].copy()
+    missing_role = {
+        "MISSING_R1": "read_1",
+        "MISSING_R2": "read_2",
+        "MISSING_LONG_READS": "long_reads",
+    }.get(fault_type)
+    if missing_role:
+        roles.remove(missing_role)
+    return roles
+
+
+def expected_zero_byte_role(fault_type: str) -> str | None:
+    return {
+        "ZERO_BYTE_ASSEMBLY": "assembly",
+        "ZERO_BYTE_R1": "read_1",
+        "ZERO_BYTE_R2": "read_2",
+        "ZERO_BYTE_LONG_READS": "long_reads",
+    }.get(fault_type)
+
+
+def _qc_fields(exercise: str) -> list[dict[str, Any]]:
+    return [
+        _field(
+            "qc_status",
+            "QC status",
+            "PASS when the sample is suitable for analysis; otherwise FAIL.",
+            aliases=["qc", "qc_decision"],
+            allowed_values=["PASS", "FAIL"],
+            normalizer="qc_status",
+        ),
+        _field(
+            "failure_reason",
+            "Failure reason",
+            "NONE for a passing sample; otherwise one categorical failure reason.",
+            aliases=["error", "error_type"],
+            allowed_values=FAILURE_REASONS_BY_EXERCISE[exercise],
+            normalizer="upper",
+        ),
+    ]
+
+
+TYPING_FIELDS = [
+    _field("species", "Species", "Canonical organism call.", normalizer="species"),
+    _field(
+        "st",
+        "ST",
+        "MLST sequence type as a number without the ST prefix.",
+        normalizer="sequence_type",
+    ),
+    _field("k_locus", "K locus", "Capsule locus.", required=False),
+    _field("capsule_type", "Capsule type", "Capsule serotype.", required=False),
+    _field("wzi", "wzi", "wzi allele.", required=False),
+    _field("o_locus", "O locus", "O-antigen locus.", required=False),
+    _field("o_type", "O type", "O-antigen type.", required=False),
+    _field(
+        "bla_carb",
+        "Carbapenemases",
+        "Detected carbapenemase genes separated by semicolons.",
+        required=False,
+        scorer="unordered_list",
+        aliases=["kleborate_bla_carb"],
+        normalizer="unordered_list",
+    ),
+]
+
+ASSEMBLY_FIELDS = [
+    _field("species", "Species", "Canonical organism call.", normalizer="species"),
+    _field(
+        "assembler",
+        "Assembler",
+        "Assembly workflow and version.",
+        required=False,
+        scored=False,
+        normalizer="trim",
+    ),
+    _field(
+        "contig_count",
+        "Contigs",
+        "Number of contigs in the submitted assembly.",
+        required=False,
+        scored=False,
+        normalizer="integer",
+    ),
+    _field(
+        "total_length",
+        "Total length",
+        "Total assembly length in bases.",
+        required=False,
+        scored=False,
+        normalizer="integer",
+    ),
+    _field(
+        "n50",
+        "N50",
+        "Assembly N50 in bases.",
+        required=False,
+        scored=False,
+        normalizer="integer",
+    ),
+    _field(
+        "longest_contig",
+        "Longest contig",
+        "Longest assembled contig in bases.",
+        required=False,
+        scored=False,
+        normalizer="integer",
+    ),
+]
 
 
 EXERCISE_CONTRACTS: dict[str, dict[str, Any]] = {
@@ -64,25 +307,21 @@ EXERCISE_CONTRACTS: dict[str, dict[str, Any]] = {
         "description": "Recover species, sequence type, surface loci and carbapenemases.",
         "instructions": [
             "Analyse every supplied assembly.",
+            "Report PASS or FAIL and one categorical failure reason for every sample.",
             "Keep the sample_id values and column names unchanged.",
             "Return the completed sample_sheet.csv as a CSV file.",
         ],
         "fields": [
             _field("sample_id", "Sample", "Public sample identifier.", identifier=True),
-            _field("species", "Species", "Organism call.", required=False),
-            _field("st", "Sequence type", "MLST sequence type."),
-            _field("k_locus", "K locus", "Capsule locus.", required=False),
-            _field("capsule_type", "Capsule type", "Capsule serotype.", required=False),
-            _field("wzi", "wzi", "wzi allele.", required=False),
-            _field("o_locus", "O locus", "O-antigen locus.", required=False),
-            _field("o_type", "O type", "O-antigen type.", required=False),
+            *_qc_fields("typing"),
+            *TYPING_FIELDS,
             _field(
-                "bla_carb",
-                "Carbapenemases",
-                "Detected carbapenemase genes separated by semicolons.",
+                "notes",
+                "Notes",
+                "Concise interpretation.",
                 required=False,
-                scorer="unordered_list",
-                aliases=["kleborate_bla_carb"],
+                scored=False,
+                normalizer="trim",
             ),
         ],
     },
@@ -96,10 +335,16 @@ EXERCISE_CONTRACTS: dict[str, dict[str, Any]] = {
         ],
         "fields": [
             _field("sample_id", "Sample", "Public sample identifier.", identifier=True),
-            _field("species", "Species", "Final taxonomic call."),
-            _field("qc", "QC", "PASS or FAIL.", aliases=["qc_decision"]),
-            _field("error", "Problem", "Detected problem type.", required=False),
-            _field("notes", "Notes", "Concise interpretation.", required=False, scored=False),
+            *_qc_fields("assembly"),
+            *ASSEMBLY_FIELDS,
+            _field(
+                "notes",
+                "Notes",
+                "Concise interpretation.",
+                required=False,
+                scored=False,
+                normalizer="trim",
+            ),
         ],
     },
     "hybrid": {
@@ -112,11 +357,16 @@ EXERCISE_CONTRACTS: dict[str, dict[str, Any]] = {
         ],
         "fields": [
             _field("sample_id", "Sample", "Public sample identifier.", identifier=True),
-            _field("species", "Species", "Final taxonomic call."),
-            _field("assembler", "Assembler", "Assembly workflow used.", required=False, scored=False),
-            _field("qc", "QC", "PASS or FAIL.", aliases=["qc_decision"]),
-            _field("error", "Problem", "Detected problem type.", required=False),
-            _field("notes", "Notes", "Concise interpretation.", required=False, scored=False),
+            *_qc_fields("hybrid"),
+            *ASSEMBLY_FIELDS,
+            _field(
+                "notes",
+                "Notes",
+                "Concise interpretation.",
+                required=False,
+                scored=False,
+                normalizer="trim",
+            ),
         ],
     },
     "outbreak": {
@@ -125,24 +375,26 @@ EXERCISE_CONTRACTS: dict[str, dict[str, Any]] = {
         "instructions": [
             "Perform read QC, mapping, variant calling and phylogenetic analysis.",
             "Assign a cluster label to every sample; label names themselves are arbitrary.",
-            "Flag samples that should be excluded from the cluster analysis.",
+            "Report PASS or FAIL and exclude failed samples from cluster interpretation.",
         ],
         "fields": [
             _field("sample_id", "Sample", "Public sample identifier.", identifier=True),
+            *_qc_fields("outbreak"),
+            _field("species", "Species", "Canonical organism call.", normalizer="species"),
             _field(
                 "cluster",
                 "Cluster",
                 "Inferred outbreak cluster label.",
                 scorer="partition",
             ),
-            _field("species", "Species", "Final taxonomic call.", required=False),
             _field(
-                "qc_decision",
-                "QC decision",
-                "include or exclude.",
-                aliases=["qc"],
+                "notes",
+                "Notes",
+                "Concise interpretation.",
+                required=False,
+                scored=False,
+                normalizer="trim",
             ),
-            _field("notes", "Notes", "Concise interpretation.", required=False, scored=False),
         ],
     },
 }
@@ -182,11 +434,28 @@ def normalize_answer_fields(answers: Mapping[str, Any]) -> dict[str, Any]:
         "kleborate_st": "st",
         "sequence_type": "st",
         "tax_classification": "species",
-        "error_type": "error",
+        "qc": "qc_status",
+        "qc_decision": "qc_status",
+        "error": "failure_reason",
+        "error_type": "failure_reason",
     }
     normalized: dict[str, Any] = {}
     for raw_name, value in answers.items():
         name = aliases.get(str(raw_name).strip().lower(), str(raw_name).strip().lower())
+        if name == "qc_status":
+            qc_value = str(value).strip().upper()
+            qc_value = {
+                "PASSED": "PASS",
+                "FAILED": "FAIL",
+                "INCLUDE": "PASS",
+                "EXCLUDE": "FAIL",
+            }.get(qc_value, qc_value)
+            value = qc_value
+        elif name == "failure_reason":
+            value = str(value).strip().upper() or "NONE"
+        elif name == "st":
+            st_value = str(value).strip()
+            value = st_value[2:] if st_value.upper().startswith("ST") else st_value
         if name in normalized and normalized[name] != value:
             raise ValueError("conflicting answer values for field {0}".format(name))
         normalized[name] = value
@@ -224,6 +493,17 @@ def write_participant_contract(
     public_dir.mkdir(parents=True, exist_ok=True)
     private_dir.mkdir(parents=True, exist_ok=True)
     fields = contract["fields"]
+    for field in fields:
+        if (
+            field["required"]
+            and not field["identifier"]
+            and field["name"] not in {"qc_status", "failure_reason"}
+        ):
+            field["required"] = False
+            field["required_when"] = {
+                "field": "qc_status",
+                "equals": "PASS",
+            }
 
     submission_schema = {
         "schema_version": BUNDLE_SCHEMA_VERSION,
@@ -256,7 +536,7 @@ def write_participant_contract(
     scoring_policy = {
         "schema_version": BUNDLE_SCHEMA_VERSION,
         "release_id": release_id,
-        "scorer_version": "2.0",
+        "scorer_version": "2.1",
         "pass_threshold": pass_threshold,
         "require_all_samples": True,
         "reject_unexpected_samples": True,
@@ -276,6 +556,13 @@ def write_participant_contract(
                 "scorer": field["scorer"],
                 "weight": 1.0,
                 "aliases": field["aliases"],
+                "normalizer": field["normalizer"],
+                "score_when": (
+                    {"field": "qc_status", "equals": "PASS"}
+                    if field["name"] not in {"qc_status", "failure_reason"}
+                    and field["scored"]
+                    else None
+                ),
             }
             for field in fields
             if not field["identifier"]
@@ -417,6 +704,7 @@ def validate_release_bundle(
     answers = _load_json(root / "private" / "answer_key.json")
     policy = _load_json(root / "private" / "scoring_policy.json")
     provenance = _load_json(root / "private" / "provenance.json")
+    faults = _load_json(root / "private" / "implant_manifest.json")
     for payload_name, payload in (
         ("release", index),
         ("manifest", manifest),
@@ -424,10 +712,11 @@ def validate_release_bundle(
         ("answer key", answers),
         ("scoring policy", policy),
         ("provenance", provenance),
+        ("fault manifest", faults),
     ):
         if not isinstance(payload, dict):
             raise ValueError("{0} must be a JSON object".format(payload_name))
-    for payload in (index, manifest, schema, answers, policy, provenance):
+    for payload in (index, manifest, schema, answers, policy, provenance, faults):
         if payload.get("release_id") != index.get("release_id"):
             raise ValueError("release_id differs across bundle artifacts")
     if index.get("schema_version") != BUNDLE_SCHEMA_VERSION:
@@ -451,14 +740,16 @@ def validate_release_bundle(
     answer_ids = [row.get("sample_id") for row in answer_rows]
     if answer_ids != sample_ids:
         raise ValueError("answer key sample order or membership differs from manifest")
+    fault_rows = faults.get("samples")
+    if not isinstance(fault_rows, list):
+        raise ValueError("fault manifest samples must be a list")
+    if [row.get("sample_id") for row in fault_rows] != sample_ids:
+        raise ValueError("fault manifest sample order or membership differs from manifest")
 
     field_names = [field.get("name") for field in fields]
     if not field_names or field_names[0] != "sample_id" or len(set(field_names)) != len(field_names):
         raise ValueError("submission schema requires unique fields beginning with sample_id")
-    scored_fields = {
-        item.get("name") for item in policy.get("fields", []) if item.get("scored")
-    }
-    for row in answer_rows:
+    for row, fault in zip(answer_rows, fault_rows):
         row_answers = row.get("answers")
         if not isinstance(row_answers, dict):
             raise ValueError("answer row must contain an answers object")
@@ -472,7 +763,68 @@ def validate_release_bundle(
         pending = {str(value).strip().lower() for value in row_answers.values()} & PENDING_VALUES
         if pending:
             raise ValueError("answer key contains pending reference analysis")
-        absent = scored_fields - set(row_answers)
+        qc_status = str(row_answers.get("qc_status", "")).strip().upper()
+        failure_reason = str(row_answers.get("failure_reason", "")).strip().upper()
+        if qc_status not in {"PASS", "FAIL"}:
+            raise ValueError(
+                "answer key has invalid qc_status for {0}".format(row["sample_id"])
+            )
+        if (qc_status == "PASS" and failure_reason != "NONE") or (
+            qc_status == "FAIL" and failure_reason in {"", "NONE"}
+        ):
+            raise ValueError(
+                "answer key has inconsistent qc_status and failure_reason for {0}".format(
+                    row["sample_id"]
+                )
+            )
+        allowed_reasons = {
+            str(value)
+            for field in fields
+            if field.get("name") == "failure_reason"
+            for value in field.get("allowed_values", [])
+        }
+        if failure_reason not in allowed_reasons:
+            raise ValueError(
+                "answer key has unsupported failure_reason for {0}: {1}".format(
+                    row["sample_id"], failure_reason
+                )
+            )
+        fault_type = fault.get("fault_type")
+        if not isinstance(fault_type, str) or not fault_type:
+            raise ValueError(
+                "fault manifest has invalid fault_type for {0}".format(
+                    row["sample_id"]
+                )
+            )
+        mapped_reason = failure_reason_for_implant(
+            str(index.get("exercise", "")), fault_type
+        )
+        if fault.get("failure_reason") != mapped_reason:
+            raise ValueError(
+                "fault manifest reason does not match fault_type for {0}".format(
+                    row["sample_id"]
+                )
+            )
+        expected_qc = "PASS" if mapped_reason == "NONE" else "FAIL"
+        if failure_reason != mapped_reason or qc_status != expected_qc:
+            raise ValueError(
+                "answer key QC truth does not match fault manifest for {0}".format(
+                    row["sample_id"]
+                )
+            )
+        conditionally_scored = {
+            item.get("name")
+            for item in policy.get("fields", [])
+            if item.get("scored")
+            and (
+                item.get("score_when") is None
+                or (
+                    item["score_when"].get("field") == "qc_status"
+                    and item["score_when"].get("equals") == qc_status
+                )
+            )
+        }
+        absent = conditionally_scored - set(row_answers)
         if absent:
             raise ValueError(
                 "answer key is missing scored fields for {0}: {1}".format(
@@ -492,6 +844,7 @@ def validate_release_bundle(
         for row in provenance.get("samples", [])
         if row.get("source_id")
     }
+    faults_by_sample = {row["sample_id"]: row for row in fault_rows}
     for row in provenance.get("samples", []):
         validation = row.get("provenance", {}).get("validation", {})
         if validation.get("status") != "passed":
@@ -500,12 +853,32 @@ def validate_release_bundle(
                     row.get("sample_id", "<unknown>")
                 )
             )
+        sample_id = row.get("sample_id")
+        if validation.get("fault_type") != faults_by_sample.get(
+            sample_id, {}
+        ).get("fault_type"):
+            raise ValueError(
+                "sample {0} validation fault_type differs from fault manifest".format(
+                    sample_id or "<unknown>"
+                )
+            )
     file_count = 0
     for sample in sample_rows:
         files = sample.get("files")
         if not isinstance(files, dict) or not files:
             raise ValueError("sample {0} has no participant files".format(sample["sample_id"]))
-        for details in files.values():
+        fault_type = str(faults_by_sample[sample["sample_id"]]["fault_type"])
+        expected_roles = expected_participant_roles(
+            str(index["exercise"]), fault_type
+        )
+        if set(files) != expected_roles:
+            raise ValueError(
+                "sample {0} file roles do not match fault type {1}".format(
+                    sample["sample_id"], fault_type
+                )
+            )
+        zero_byte_role = expected_zero_byte_role(fault_type)
+        for role, details in files.items():
             path = root / "public" / "files" / str(details.get("filename", ""))
             if not path.is_file():
                 raise ValueError("missing participant file: {0}".format(path.name))
@@ -513,6 +886,18 @@ def validate_release_bundle(
                 raise ValueError("size mismatch for {0}".format(path.name))
             if details.get("sha256") != sha256_file(path):
                 raise ValueError("checksum mismatch for {0}".format(path.name))
+            if role == zero_byte_role and path.stat().st_size != 0:
+                raise ValueError(
+                    "declared zero-byte fault is not materialized for {0}".format(
+                        sample["sample_id"]
+                    )
+                )
+            if role != zero_byte_role and path.stat().st_size == 0:
+                raise ValueError(
+                    "undeclared zero-byte participant file for {0}".format(
+                        sample["sample_id"]
+                    )
+                )
             for header in _read_first_headers(path):
                 if not is_anonymous_fastq_header(header, sample["sample_id"]):
                     raise ValueError("non-anonymous sequence header in {0}".format(path.name))

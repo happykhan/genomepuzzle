@@ -13,6 +13,7 @@ from typing import Any, Mapping, Sequence
 from genomepuzzle.contract import (
     BUNDLE_SCHEMA_VERSION,
     exercise_contract,
+    failure_reason_for_implant,
     json_dump,
     normalize_answer_fields,
     write_participant_contract,
@@ -37,6 +38,8 @@ FORBIDDEN_PUBLIC_KEYS = {
     "answer_key",
     "expected",
     "expected_answers",
+    "fault",
+    "fault_type",
     "implant",
     "implant_type",
     "reference_accession",
@@ -450,15 +453,43 @@ def write_release_manifests(
         private_file_checksums = {
             role: details["sha256"] for role, details in file_manifest.items()
         }
-        normalized_answers = normalize_answer_fields(sample.expected_answers)
+        raw_answers = dict(sample.expected_answers)
+        raw_answers.setdefault(
+            "qc_status",
+            "PASS" if sample.implant in NORMAL_IMPLANTS else "FAIL",
+        )
+        raw_answers.setdefault(
+            "failure_reason",
+            failure_reason_for_implant(spec.exercise, sample.implant),
+        )
+        normalized_answers = normalize_answer_fields(raw_answers)
+        expected_qc_status = (
+            "PASS" if sample.implant in NORMAL_IMPLANTS else "FAIL"
+        )
+        expected_failure_reason = failure_reason_for_implant(
+            spec.exercise, sample.implant
+        )
+        if normalized_answers.get("qc_status") != expected_qc_status:
+            raise ValueError(
+                "sample {0} qc_status does not match private fault type {1}".format(
+                    sample.sample_id, sample.implant
+                )
+            )
+        if normalized_answers.get("failure_reason") != expected_failure_reason:
+            raise ValueError(
+                "sample {0} failure_reason does not match private fault type {1}".format(
+                    sample.sample_id, sample.implant
+                )
+            )
         normalized_answers_by_sample.append(normalized_answers)
         private_rows.append(
             {
                 "sample_id": sample.sample_id,
                 "source_id": sample.source_id,
                 "random_seed": sample.random_seed,
-                "implant": {
-                    "type": sample.implant,
+                "fault": {
+                    "fault_type": sample.implant,
+                    "failure_reason": expected_failure_reason,
                     "parameters": dict(sample.implant_parameters),
                 },
                 "expected_answers": normalized_answers,
@@ -475,7 +506,8 @@ def write_release_manifests(
         implant_rows.append(
             {
                 "sample_id": sample.sample_id,
-                "type": sample.implant,
+                "fault_type": sample.implant,
+                "failure_reason": expected_failure_reason,
                 "parameters": dict(sample.implant_parameters),
             }
         )
@@ -512,9 +544,11 @@ def write_release_manifests(
     implant_manifest = dict(header)
     implant_manifest["samples"] = implant_rows
     implant_manifest["summary"] = {
-        "normal": sum(row["type"] in NORMAL_IMPLANTS for row in implant_rows),
+        "normal": sum(
+            row["fault_type"] in NORMAL_IMPLANTS for row in implant_rows
+        ),
         "troublesome": sum(
-            row["type"] not in NORMAL_IMPLANTS for row in implant_rows
+            row["fault_type"] not in NORMAL_IMPLANTS for row in implant_rows
         ),
     }
 
@@ -532,8 +566,14 @@ def write_release_manifests(
         for line in sorted(checksum_lines):
             handle.write(line + "\n")
 
-    common_answer_fields = set(normalized_answers_by_sample[0])
-    for answers in normalized_answers_by_sample[1:]:
+    passing_answers = [
+        answers
+        for answers in normalized_answers_by_sample
+        if answers.get("qc_status") == "PASS"
+    ]
+    scoring_answers = passing_answers or normalized_answers_by_sample
+    common_answer_fields = set(scoring_answers[0])
+    for answers in scoring_answers[1:]:
         common_answer_fields &= set(answers)
     common_answer_fields.discard("analysis_status")
     write_participant_contract(

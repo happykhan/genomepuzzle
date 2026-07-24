@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ghrupuzzles.org/schemas/genomepuzzle/manifest-2.0.json",
+  "$id": "https://ghrupuzzles.org/schemas/genomepuzzle/manifest-2.1.json",
   "title": "GenomePuzzle public manifest",
   "type": "object",
   "additionalProperties": false,
@@ -14,7 +14,7 @@
     "samples"
   ],
   "properties": {
-    "schema_version": { "const": "2.0" },
+    "schema_version": { "const": "2.1" },
     "release_id": { "type": "string", "minLength": 1 },
     "exercise": { "enum": ["typing", "assembly", "hybrid", "outbreak"] },
     "mode": { "enum": ["practice", "challenge"] },
@@ -40,7 +40,7 @@
               "properties": {
                 "filename": { "type": "string", "minLength": 1 },
                 "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-                "size": { "type": "integer", "minimum": 1 }
+                "size": { "type": "integer", "minimum": 0 }
               }
             }
           }

@@ -54,6 +54,7 @@ nav:
       - First release: getting-started/first-release.md
   - Author datasets:
       - Release specifications: authoring/release-specification.md
+      - QC and result fields: authoring/qc-and-results.md
       - Genotyping: authoring/typing.md
       - Short-read assembly: authoring/assembly.md
       - Hybrid assembly: authoring/hybrid.md

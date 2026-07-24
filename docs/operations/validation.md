@@ -7,12 +7,13 @@ boundary.
 
 A release cannot be sealed when:
 
-- a participant file is missing, malformed or has a checksum mismatch;
+- a participant file is unexpectedly missing, zero bytes, malformed or has a
+  checksum mismatch;
 - manifests, sample sheet and answer key disagree about membership;
 - a scored answer is missing or pending;
 - an answer lies outside the submission schema;
 - a source identity remains in a public sequence header;
-- a troublesome sample lacks passing implant evidence; or
+- a faulted sample lacks passing materialisation evidence; or
 - a required contract artifact is absent.
 
 Run both checks after SLURM completes:
@@ -33,7 +34,7 @@ normal/troublesome balance and complete-bundle SHA-256 digest.
 
 Automated validation is necessary but not sufficient. Before publication:
 
-1. Review `private/implant_manifest.json`.
+1. Review `private/implant_manifest.json`, including every `fault_type`.
 2. Review `private/validation_report.json`.
 3. Confirm expected answers were obtained from final participant files.
 4. Inspect every troublesome sample and a representative clean sample.
