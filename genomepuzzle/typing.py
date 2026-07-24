@@ -260,7 +260,7 @@ def _build_typing_sample(
             raise ValueError("MIXED_CONTIGS contaminant must differ from target")
         contaminant_path = _source_path(source_dir, contaminant_source_id)
         fraction = float(
-            sample.implant_parameters.get("contamination_fraction", 0.5)
+            sample.implant_parameters.get("contamination_fraction", 0.45)
         )
         records = mix_records(
             records,
@@ -329,7 +329,7 @@ def _build_typing_sample(
         if contaminant_bases <= 0:
             raise ValueError("MIXED_CONTIGS did not add contaminant sequence")
         requested_fraction = float(
-            sample.implant_parameters.get("contamination_fraction", 0.5)
+            sample.implant_parameters.get("contamination_fraction", 0.45)
         )
         achieved_fraction = contaminant_bases / int(validation["final_bases"])
         if abs(achieved_fraction - requested_fraction) > 1 / int(

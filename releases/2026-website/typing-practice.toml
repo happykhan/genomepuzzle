@@ -33,4 +33,4 @@ public_id = "Sample_TP005"
 implant = "MIXED_CONTIGS"
 [samples.implant_parameters]
 contaminant_source_id = "GCF_000005845.2"
-contamination_fraction = 0.50
+contamination_fraction = 0.45

@@ -39,4 +39,4 @@ source_id = "GCA_902156085.1"
 implant = "MIXED_CONTIGS"
 [samples.implant_parameters]
 contaminant_source_id = "GCF_000005845.2"
-contamination_fraction = 0.50
+contamination_fraction = 0.45

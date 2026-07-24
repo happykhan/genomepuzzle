@@ -30,7 +30,7 @@ implant = "MIXED_CONTIGS"
 
 [samples.implant_parameters]
 contaminant_source_id = "GCA_000000100.1"
-contamination_fraction = 0.50
+contamination_fraction = 0.45
 ```
 
 The contaminant assembly must exist in the same source directory. Source names
