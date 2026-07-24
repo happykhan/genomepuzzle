@@ -113,11 +113,6 @@ def package_read_release(
             or missing_r2
             or zero_r1
             or zero_r2
-            or sample.implant
-            in {
-                "TRUNCATED_R1_TO_10_READS",
-                "TRUNCATED_R2_TO_10_READS",
-            }
         )
         files: dict[str, str] = {}
         provenance: dict[str, object] = {}

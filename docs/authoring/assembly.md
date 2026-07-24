@@ -10,7 +10,6 @@ and report a QC interpretation.
 | --- | --- | --- |
 | `LOW_COVERAGE` | `read_fraction` | No more than approximately 1× depth |
 | `TRUNCATE_TO_READ_PAIRS` | `retained_read_pairs` | An explicit 1–100 paired reads |
-| `TEN_READ_PAIRS` | — | Backward-compatible shorthand for exactly ten pairs |
 | `ZERO_BYTE_R1`, `ZERO_BYTE_R2` | — | A required mate is a literal zero-byte file |
 | `MISSING_R1`, `MISSING_R2` | — | A required mate is absent |
 | `CONTAMINATED` | `contaminant_source_id`, `contamination_fraction` | A 30–90% mixture with a different species |

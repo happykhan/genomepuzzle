@@ -121,10 +121,7 @@ IMPLANT_FAILURE_REASONS: dict[str, dict[str, str]] = {
         "ZERO_BYTE_R2": "EMPTY_FILE",
         "MISSING_R1": "MISSING_MATE",
         "MISSING_R2": "MISSING_MATE",
-        "TEN_READ_PAIRS": "TOO_FEW_READS",
         "TRUNCATE_TO_READ_PAIRS": "TOO_FEW_READS",
-        "TRUNCATED_R1_TO_10_READS": "TOO_FEW_READS",
-        "TRUNCATED_R2_TO_10_READS": "TOO_FEW_READS",
         "LOW_COVERAGE": "LOW_COVERAGE",
         "CONTAMINATED": "CONTAMINATED",
         "WRONG_ORGANISM": "WRONG_ORGANISM",
@@ -136,10 +133,7 @@ IMPLANT_FAILURE_REASONS: dict[str, dict[str, str]] = {
         "ZERO_BYTE_R2": "EMPTY_FILE",
         "MISSING_R1": "MISSING_MATE",
         "MISSING_R2": "MISSING_MATE",
-        "TEN_READ_PAIRS": "TOO_FEW_READS",
         "TRUNCATE_TO_READ_PAIRS": "TOO_FEW_READS",
-        "TRUNCATED_R1_TO_10_READS": "TOO_FEW_READS",
-        "TRUNCATED_R2_TO_10_READS": "TOO_FEW_READS",
         "LOW_COVERAGE": "LOW_COVERAGE",
         "LOW_SHORT_COVERAGE": "LOW_COVERAGE",
         "MISSING_LONG_READS": "MISSING_LONG_READS",
@@ -156,10 +150,7 @@ IMPLANT_FAILURE_REASONS: dict[str, dict[str, str]] = {
         "ZERO_BYTE_R2": "EMPTY_FILE",
         "MISSING_R1": "MISSING_MATE",
         "MISSING_R2": "MISSING_MATE",
-        "TEN_READ_PAIRS": "TOO_FEW_READS",
         "TRUNCATE_TO_READ_PAIRS": "TOO_FEW_READS",
-        "TRUNCATED_R1_TO_10_READS": "TOO_FEW_READS",
-        "TRUNCATED_R2_TO_10_READS": "TOO_FEW_READS",
         "LOW_COVERAGE": "LOW_COVERAGE",
         "CONTAMINATED": "CONTAMINATED",
         "WRONG_ORGANISM": "WRONG_ORGANISM",
@@ -192,8 +183,6 @@ def retained_read_pairs_for_fault(
     """Resolve an explicit, categorically tiny paired-read fault size."""
 
     normalized = implant.strip().upper()
-    if normalized == "TEN_READ_PAIRS":
-        return 10
     if normalized != "TRUNCATE_TO_READ_PAIRS":
         raise ValueError("fault does not truncate a complete paired-read dataset")
     value = parameters.get("retained_read_pairs")

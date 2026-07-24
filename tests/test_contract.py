@@ -157,7 +157,7 @@ def test_exercises_use_relevant_canonical_columns():
 
 def test_private_faults_map_to_small_public_vocabulary():
     assert (
-        failure_reason_for_implant("assembly", "TRUNCATED_R2_TO_10_READS")
+        failure_reason_for_implant("assembly", "TRUNCATE_TO_READ_PAIRS")
         == "TOO_FEW_READS"
     )
     assert failure_reason_for_implant("typing", "FRAGMENTED") == "EXTREME_FRAGMENTATION"
@@ -167,7 +167,6 @@ def test_private_faults_map_to_small_public_vocabulary():
 
 
 def test_catastrophic_read_count_fault_is_explicit_and_bounded():
-    assert retained_read_pairs_for_fault("TEN_READ_PAIRS", {}) == 10
     assert (
         retained_read_pairs_for_fault(
             "TRUNCATE_TO_READ_PAIRS", {"retained_read_pairs": 37}
@@ -180,3 +179,5 @@ def test_catastrophic_read_count_fault_is_explicit_and_bounded():
         retained_read_pairs_for_fault(
             "TRUNCATE_TO_READ_PAIRS", {"retained_read_pairs": 101}
         )
+    with pytest.raises(ValueError, match="does not truncate"):
+        retained_read_pairs_for_fault("NORMAL", {})

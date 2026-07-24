@@ -63,6 +63,9 @@ nav:
   - Operate releases:
       - SLURM workflow: operations/slurm.md
       - Pilot calibration: operations/pilot-calibration.md
+      - Blinded release acceptance: operations/blinded-acceptance.md
+      - Challenge 2 blinded validation: operations/challenge-2-validation.md
+      - Challenge 2 publication receipt: operations/challenge-2-publication.md
       - Release-building reference: release-building.md
       - Validate and publish: operations/validation.md
       - Troubleshooting: operations/troubleshooting.md

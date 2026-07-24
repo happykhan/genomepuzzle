@@ -40,7 +40,6 @@ OUTBREAK_IMPLANTS = {
     "ZERO_BYTE_R2",
     "MISSING_R1",
     "MISSING_R2",
-    "TEN_READ_PAIRS",
     "TRUNCATE_TO_READ_PAIRS",
     "WRONG_ORGANISM",
 }
@@ -234,7 +233,7 @@ def _build_outbreak_sample(
             sample.random_seed,
         )
         provenance["expected_coverage"] = round(expected_coverage, 4)
-    elif sample.implant in {"TEN_READ_PAIRS", "TRUNCATE_TO_READ_PAIRS"}:
+    elif sample.implant == "TRUNCATE_TO_READ_PAIRS":
         retained_pairs = retained_read_pairs_for_fault(
             sample.implant, sample.implant_parameters
         )

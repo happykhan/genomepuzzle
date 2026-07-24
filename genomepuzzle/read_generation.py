@@ -35,10 +35,7 @@ ASSEMBLY_IMPLANTS = {
     "ZERO_BYTE_R2",
     "MISSING_R1",
     "MISSING_R2",
-    "TEN_READ_PAIRS",
     "TRUNCATE_TO_READ_PAIRS",
-    "TRUNCATED_R1_TO_10_READS",
-    "TRUNCATED_R2_TO_10_READS",
     "WRONG_ORGANISM",
 }
 HYBRID_IMPLANTS = {
@@ -50,10 +47,7 @@ HYBRID_IMPLANTS = {
     "ZERO_BYTE_R2",
     "MISSING_R1",
     "MISSING_R2",
-    "TEN_READ_PAIRS",
     "TRUNCATE_TO_READ_PAIRS",
-    "TRUNCATED_R1_TO_10_READS",
-    "TRUNCATED_R2_TO_10_READS",
     "MISSING_LONG_READS",
     "ZERO_BYTE_LONG_READS",
     "TEN_LONG_READS",
@@ -320,7 +314,7 @@ def _generate_sample(
         )
         achieved["read_fraction"] = fraction
         achieved["expected_short_coverage"] = round(achieved_coverage, 4)
-    elif sample.implant in {"TEN_READ_PAIRS", "TRUNCATE_TO_READ_PAIRS"}:
+    elif sample.implant == "TRUNCATE_TO_READ_PAIRS":
         retained_pairs = retained_read_pairs_for_fault(
             sample.implant, sample.implant_parameters
         )
@@ -333,30 +327,6 @@ def _generate_sample(
             random_seed=sample.random_seed,
         )
         achieved["short_read_pairs"] = retained_pairs
-    elif sample.implant in {
-        "TRUNCATED_R1_TO_10_READS",
-        "TRUNCATED_R2_TO_10_READS",
-    }:
-        if sample.implant == "TRUNCATED_R1_TO_10_READS":
-            subsample_single_fastq_by_count(
-                str(base_r1),
-                str(final_r1),
-                num_reads=10,
-                random_seed=sample.random_seed,
-            )
-            shutil.copyfile(base_r2, final_r2)
-            truncated_role = "read_1"
-        else:
-            shutil.copyfile(base_r1, final_r1)
-            subsample_single_fastq_by_count(
-                str(base_r2),
-                str(final_r2),
-                num_reads=10,
-                random_seed=sample.random_seed,
-            )
-            truncated_role = "read_2"
-        achieved["truncated_role"] = truncated_role
-        achieved["truncated_role_reads"] = 10
     elif sample.implant in {"ZERO_BYTE_R1", "ZERO_BYTE_R2"}:
         _copy_pair(base_r1, base_r2, final_r1, final_r2)
         empty_path = final_r1 if sample.implant == "ZERO_BYTE_R1" else final_r2

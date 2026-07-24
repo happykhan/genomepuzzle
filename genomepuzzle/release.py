@@ -306,7 +306,7 @@ def resolve_release_samples(
     resolved = []
     seen_ids = set()
     for sample in spec.samples:
-        if sample.implant in {"TEN_READ_PAIRS", "TRUNCATE_TO_READ_PAIRS"}:
+        if sample.implant == "TRUNCATE_TO_READ_PAIRS":
             retained_read_pairs_for_fault(
                 sample.implant, sample.implant_parameters
             )

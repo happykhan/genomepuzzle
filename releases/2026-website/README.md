@@ -89,5 +89,7 @@ matched every remote object size and SHA-256 metadata value, confirmed HTTP
 200 participant downloads for all practice exercises, and found no Challenge
 2 prefix or private-answer path in the public bucket.
 
-The validated contract 2.1 releases recorded above supersede these objects and
-must replace them in R2 before website registration.
+The validated contract 2.1 releases recorded above replaced these objects in
+R2 on 24 July 2026. The post-replacement inventory and verification evidence
+are preserved in
+[`docs/operations/challenge-2-publication.md`](../../docs/operations/challenge-2-publication.md).
