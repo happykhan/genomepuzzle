@@ -408,6 +408,8 @@ def _write_sample_sheet(path: Path, samples: list[ReleaseArtifactSample]) -> Non
         for sample in samples:
             row = {"Sample": sample.sample_id}
             row.update(sample.public_metadata)
-            row["R1"] = Path(sample.files["read_1"]).name
-            row["R2"] = Path(sample.files["read_2"]).name
+            read_1 = sample.files.get("read_1")
+            read_2 = sample.files.get("read_2")
+            row["R1"] = Path(read_1).name if read_1 else ""
+            row["R2"] = Path(read_2).name if read_2 else ""
             writer.writerow(row)

@@ -54,6 +54,12 @@ implant = "CONTAMINATED"
 [samples.implant_parameters]
 contaminant_source_id = "outsider"
 contamination_fraction = 0.5
+
+[[samples]]
+source_id = "tip2"
+identity_key = "tip2-missing-r2"
+public_id = "Sample_missing"
+implant = "MISSING_R2"
 """.strip()
         + "\n",
         encoding="utf-8",
@@ -79,9 +85,12 @@ contamination_fraction = 0.5
         == "LOW_COVERAGE"
     )
     assert private["samples"][2]["expected_answers"]["cluster"] == "1"
+    assert private["samples"][3]["expected_answers"]["failure_reason"] == "MISSING_MATE"
+    assert set(public["samples"][3]["files"]) == {"read_1"}
 
     with open(output / "public/sample_sheet.csv", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
     assert rows[0]["sample_id"] == "Sample_normal"
+    assert rows[3]["sample_id"] == "Sample_missing"
     assert "Cluster" not in rows[0]
     assert (output / "COMPLETE.json").is_file()
