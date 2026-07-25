@@ -36,6 +36,19 @@ pixi run genomepuzzle release submit \
 Only a release containing `COMPLETE.json` and passing independent validation
 is ready for the GHRUPuzzles manifest-driven publisher.
 
+## Combined assembly EQA participant pack
+
+The 14 August 2026 delivery groups `challenge-2-assembly` and
+`challenge-2-hybrid` into one participant-facing exercise while retaining
+separate public templates and private evidence for each track. The pinned pack
+definition is `combined-eqa-challenge-2.toml`; build and validation instructions
+are in
+[`docs/operations/combined-eqa-release-pack.md`](../../docs/operations/combined-eqa-release-pack.md).
+
+The pack does not merge the two release contracts. GHRU Puzzles continues to
+score the short-read and hybrid submissions against their own schemas and
+private policies.
+
 ## Contract 2.1 production build record
 
 The 24 July 2026 contract 2.1 releases completed through SLURM and passed both
