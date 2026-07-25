@@ -1,0 +1,26 @@
+schema_version = "1.0"
+pack_id = "challenge-2-combined-assembly-eqa"
+title = "Challenge 2 — Combined short-read and long-read assembly EQA"
+description = "Assess short-read assembly and hybrid assembly as one participant exercise while retaining separate evidence and result sheets for each track."
+mode = "challenge"
+release_date = "2026-08-14"
+instructions = [
+  "Download both track directories and read the instructions before starting.",
+  "For the short-read track, assess and assemble each paired-read dataset independently.",
+  "For the long-read track, assess the paired short reads and long reads together, compare the two modalities, and use both when the sample passes QC.",
+  "Record PASS or FAIL plus one allowed failure reason for every sample before completing analytical fields.",
+  "Complete the supplied CSV template in each track without changing sample identifiers, headers, or track membership.",
+  "Return both completed CSV files as the two evidence parts of this single EQA exercise.",
+]
+
+[[tracks]]
+name = "short-read"
+release_id = "challenge-2-assembly"
+exercise = "assembly"
+bundle_sha256 = "6b9fef4a60d02fa4d4e5789002c38e2dfd37e85cde4c21037d62f490efca88e7"
+
+[[tracks]]
+name = "long-read"
+release_id = "challenge-2-hybrid"
+exercise = "hybrid"
+bundle_sha256 = "add243400399180bfb31a2ea52b50b9df95bd98f7b72b516aaadd7b79a6bc506"

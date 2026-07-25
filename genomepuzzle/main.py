@@ -10,6 +10,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from genomepuzzle.contamination import contamination_menu
+from genomepuzzle.combined_pack import build_combined_pack, validate_combined_pack
 from genomepuzzle.contract import inspect_release, validate_release_bundle
 from genomepuzzle.create_error import introduce_errors
 from genomepuzzle.hybrid import create_hybrid_dataset
@@ -320,6 +321,56 @@ if typer is not None:
     ):
         details = inspect_release(release_dir)
         _print_run_summary("release inspect", list(details.items()))
+
+    @release_app.command("build-combined-pack")
+    def build_combined_pack_command(
+        spec: str = typer.Option(..., "--spec", help="Combined pack TOML."),
+        short_read_release: str = typer.Option(
+            ...,
+            "--short-read-release",
+            help="Completed short-read assembly release directory.",
+        ),
+        long_read_release: str = typer.Option(
+            ...,
+            "--long-read-release",
+            help="Completed hybrid assembly release directory.",
+        ),
+        output_dir: str = typer.Option(
+            ..., "--output-dir", help="New combined pack directory."
+        ),
+    ):
+        output = build_combined_pack(
+            spec,
+            short_read_release=short_read_release,
+            long_read_release=long_read_release,
+            output_dir=output_dir,
+        )
+        report = validate_combined_pack(output)
+        _print_run_summary(
+            "release build-combined-pack",
+            [
+                ("pack_id", report["pack_id"]),
+                ("status", report["status"]),
+                ("short-read samples", report["samples"]["short-read"]),
+                ("long-read samples", report["samples"]["long-read"]),
+                ("output", output),
+            ],
+        )
+
+    @release_app.command("validate-combined-pack")
+    def validate_combined_pack_command(
+        pack_dir: str = typer.Option(..., "--pack-dir"),
+    ):
+        report = validate_combined_pack(pack_dir)
+        _print_run_summary(
+            "release validate-combined-pack",
+            [
+                ("pack_id", report["pack_id"]),
+                ("status", report["status"]),
+                ("short-read samples", report["samples"]["short-read"]),
+                ("long-read samples", report["samples"]["long-read"]),
+            ],
+        )
 
     @release_app.command("build-typing")
     def build_typing_release_command(
